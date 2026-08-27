@@ -25,6 +25,7 @@ final class Plugin {
         require_once WOO2NOSTR_DIR . 'includes/Admin/BulkActions.php';
         require_once WOO2NOSTR_DIR . 'includes/Admin/OrderInbox.php';
         require_once WOO2NOSTR_DIR . 'includes/Nostr/Utils.php';
+        require_once WOO2NOSTR_DIR . 'includes/Nostr/SchnorrPure.php';
         require_once WOO2NOSTR_DIR . 'includes/Nostr/EventBuilder.php';
         require_once WOO2NOSTR_DIR . 'includes/Nostr/Signer.php';
         require_once WOO2NOSTR_DIR . 'includes/Nostr/RelayPublisher.php';

@@ -93,11 +93,17 @@ final class Queue {
             'pubkey' => get_option('woo2nostr_pubkey', ''),
         ]);
         $results = [];
+        $lastError = '';
         foreach ($events as $ev) {
             $signed = $signer->sign($ev);
-            if (!$signed) { $results[] = ['ok' => false, 'error' => 'Signing failed — check php secp256k1 extension or nsec']; continue; }
+            if (!$signed) {
+                $dbg = method_exists($signer, 'debugInfo') ? $signer->debugInfo() : [];
+                $lastError = 'Signing failed — need secp256k1 extension OR gmp (pure PHP fallback). Debug: '.wp_json_encode($dbg);
+                $results[] = ['ok' => false, 'error' => $lastError];
+                continue;
+            }
             $pub = RelayPublisher::publish($signed);
-            $results[] = $pub;
+            $results[] = array_merge($pub, ['event_id' => $signed['id'] ?? '', 'kind' => $signed['kind'] ?? 30402]);
             if (!empty($pub['ok'])) {
                 $d = '';
                 foreach ($signed['tags'] as $t) if (($t[0] ?? '') === 'd') { $d = $t[1] ?? ''; break; }
@@ -105,9 +111,18 @@ final class Queue {
                 update_post_meta($productId, '_woo2nostr_last_d', $d);
                 update_post_meta($productId, '_woo2nostr_last_sync', time());
                 update_post_meta($productId, '_woo2nostr_status', 'synced');
+                delete_post_meta($productId, '_woo2nostr_last_error');
+            } else {
+                $lastError = wp_json_encode($pub);
             }
         }
         $ok = count(array_filter($results, fn($r) => !empty($r['ok']))) > 0;
+        if (!$ok) {
+            update_post_meta($productId, '_woo2nostr_status', 'failed');
+            update_post_meta($productId, '_woo2nostr_last_error', $lastError ?: wp_json_encode($results));
+            error_log('[Woo2Nostr] sync failed product '.$productId.': '.wp_json_encode($results));
+        }
+        update_option('woo2nostr_last_publish', ['time' => time(), 'product_id' => $productId, 'ok' => $ok, 'results' => $results], false);
         return ['ok' => $ok, 'results' => $results];
     }
 

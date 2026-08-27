@@ -82,8 +82,10 @@ final class ProductMetaBox {
     public static function columnContent(string $col, int $postId): void {
         if ($col !== 'woo2nostr') return;
         $s = get_post_meta($postId,'_woo2nostr_status',true);
+        $err = get_post_meta($postId,'_woo2nostr_last_error',true);
         if ($s === 'synced') echo '<span style="color:green">● synced</span>';
-        elseif ($s) echo '<span style="color:#d63638">● '.esc_html($s).'</span>';
+        elseif ($s === 'failed') echo '<span title="'.esc_attr($err).'" style="color:#d63638;cursor:help">● failed</span>';
+        elseif ($s) echo '<span title="'.esc_attr($err).'" style="color:#d63638">● '.esc_html($s).'</span>';
         else echo '<span style="color:#999">—</span>';
     }
 }

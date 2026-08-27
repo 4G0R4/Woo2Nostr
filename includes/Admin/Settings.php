@@ -89,6 +89,10 @@ final class Settings {
             <h1>Woo2Nostr <small style="font-weight:normal">NIP-99 · Gamma Markets</small></h1>
             <p><?php esc_html_e('Mirror WooCommerce products to Nostr. Choose key mode, relays, and Shopstr behavior. Price/currency mirrors WooCommerce settings.', 'woo2nostr'); ?></p>
             <?php if ($pubkey): ?><p><strong>npub:</strong> <code><?php echo esc_html($npub); ?></code> &nbsp; <strong>hex:</strong> <code><?php echo esc_html($pubkey); ?></code></p><?php endif; ?>
+            <?php
+            $hasGmp = extension_loaded('gmp');
+            $hasSecp = extension_loaded('secp256k1');
+            if (!$hasGmp && !$hasSecp): ?><div class="notice notice-error inline"><p><?php esc_html_e('Missing PHP extension: need either secp256k1 or gmp for signing. Install php-gmp (pure PHP fallback) or php-secp256k1. Until then publishing will fail.', 'woo2nostr'); ?></p></div><?php endif; ?>
             <?php if (!$hasNsec && $mode === 'server'): ?><div class="notice notice-warning inline"><p><?php esc_html_e('Server mode requires an nsec. Background sync & polling disabled until set.', 'woo2nostr'); ?></p></div><?php endif; ?>
             <?php if ($mode !== 'server'): ?><div class="notice notice-info inline"><p><?php esc_html_e('NIP-07 / Bunker modes require browser signing. Background auto-sync and polling are disabled in these modes.', 'woo2nostr'); ?></p></div><?php endif; ?>
             <form method="post">
@@ -173,6 +177,22 @@ final class Settings {
             <h2><?php esc_html_e('Bulk sync', 'woo2nostr'); ?></h2>
             <p><?php esc_html_e('Use Products → bulk actions “Publish to Nostr”, or the dedicated tool:', 'woo2nostr'); ?> <a href="<?php echo esc_url(admin_url('admin.php?page=woo2nostr-bulk')); ?>" class="button">Open bulk sync</a></p>
             <p class="description">WooCommerce currency: <code><?php echo esc_html(get_woocommerce_currency()); ?></code> — published price tags use this.</p>
+            <hr>
+            <h2><?php esc_html_e('Diagnostics', 'woo2nostr'); ?></h2>
+            <?php
+            $last = get_option('woo2nostr_last_publish', null);
+            $hasGmp = extension_loaded('gmp') ? 'yes' : 'no';
+            $hasSecp = extension_loaded('secp256k1') ? 'yes' : 'no';
+            $hasSodium = function_exists('sodium_crypto_secretbox') ? 'yes' : 'no';
+            $cronDisabled = defined('DISABLE_WP_CRON') && DISABLE_WP_CRON ? 'YES (queue may stall)' : 'no';
+            echo '<p>PHP: gmp='.$hasGmp.' secp256k1='.$hasSecp.' sodium='.$hasSodium.' | WP-Cron disabled: '.$cronDisabled.' | Mode: '.esc_html($mode).' | Pubkey: '.($pubkey?substr($pubkey,0,8).'…':'none').'</p>';
+            if ($last) {
+                echo '<p>Last publish: '.esc_html(gmdate('Y-m-d H:i:s', (int)$last['time'])).' product #'.(int)$last['product_id'].' ok='.($last['ok']?'yes':'NO').'</p>';
+                echo '<pre style="max-height:200px;overflow:auto;background:#f6f8fa;padding:8px;font-size:11px">'.esc_html(wp_json_encode($last['results'], JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES)).'</pre>';
+            } else { echo '<p>No publish yet — use bulk queue then check Woo &gt; Status &gt; Scheduled Actions for woo2nostr jobs.</p>'; }
+            echo '<p>Listings (30402) appear on marketplace clients (Shopstr, Coracle) — not on nsite (nsite shows kind 30023). Verify at <a href="https://nostr.band/search?q=30402" target="_blank">nostr.band</a> or <a href="https://primal.net/search" target="_blank">Primal</a> with your npub.</p>';
+            echo '<p><a href="'.esc_url(admin_url('admin.php?page=wc-status&tab=action-scheduler&s=woo2nostr')).'" class="button">View Action Scheduler queue</a> <a href="'.esc_url(admin_url('admin.php?page=wc-status&tab=logs')).'" class="button">Logs</a></p>';
+            ?>
         </div>
         <?php
     }
@@ -213,6 +233,9 @@ final class Settings {
                 $ser=''; secp256k1_ec_pubkey_serialize($ctx,$ser,$pub, SECP256K1_EC_COMPRESSED);
                 return substr(bin2hex($ser),2);
             } catch (\Throwable $e) {}
+        }
+        if (extension_loaded('gmp')) {
+            try { $pure = \Woo2Nostr\Nostr\SchnorrPure::derivePubkey(strtolower($hex)); if ($pure) return strtolower($pure); } catch (\Throwable $e) {}
         }
         return null;
     }

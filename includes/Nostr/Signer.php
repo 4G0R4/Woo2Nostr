@@ -56,16 +56,17 @@ final class ServerSigner implements SignerInterface {
     }
 
     private function derivePubkey(string $privHex): ?string {
-        if (function_exists('sodium_crypto_scalarmult_base')) {
-            if (extension_loaded('secp256k1') && function_exists('secp256k1_context_create')) {
-                try {
-                    $ctx = secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
-                    $pub = ''; secp256k1_ec_pubkey_create($ctx, $pub, Utils::hexToBytes($privHex));
-                    $serialized = ''; secp256k1_ec_pubkey_serialize($ctx, $serialized, $pub, SECP256K1_EC_COMPRESSED);
-                    $hex = bin2hex($serialized);
-                    return substr($hex, 2);
-                } catch (\Throwable $e) {}
-            }
+        if (extension_loaded('secp256k1') && function_exists('secp256k1_context_create')) {
+            try {
+                $ctx = secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
+                $pub = ''; secp256k1_ec_pubkey_create($ctx, $pub, Utils::hexToBytes($privHex));
+                $serialized = ''; secp256k1_ec_pubkey_serialize($ctx, $serialized, $pub, SECP256K1_EC_COMPRESSED);
+                $hex = bin2hex($serialized);
+                return substr($hex, 2);
+            } catch (\Throwable $e) {}
+        }
+        if (extension_loaded('gmp')) {
+            try { $pure = SchnorrPure::derivePubkey(strtolower($privHex)); if ($pure) return strtolower($pure); } catch (\Throwable $e) {}
         }
         return null;
     }
@@ -78,7 +79,18 @@ final class ServerSigner implements SignerInterface {
                 if ($rv === 1) return bin2hex($sig);
             } catch (\Throwable $e) {}
         }
+        if (extension_loaded('gmp')) {
+            try { $sig = SchnorrPure::sign(strtolower($idHex), strtolower($privHex)); if ($sig) return strtolower($sig); } catch (\Throwable $e) {}
+        }
         return null;
+    }
+
+    public function debugInfo(): array {
+        return [
+            'secp256k1' => extension_loaded('secp256k1'),
+            'gmp' => extension_loaded('gmp'),
+            'sodium' => function_exists('sodium_crypto_secretbox'),
+        ];
     }
 }
 
