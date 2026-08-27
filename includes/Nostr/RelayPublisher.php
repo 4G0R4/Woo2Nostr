@@ -5,13 +5,20 @@ defined('ABSPATH') || exit;
 
 final class RelayPublisher {
 
+    const DEFAULT_RELAYS = "wss://relay.damus.io\nwss://nos.lol\nwss://relay.nostr.band\nwss://relay.primal.net";
+    const PAID_RELAYS = ['wss://relay.nostr.wine', 'wss://eden.nostr.land'];
+
     public static function getRelays(): array {
-        $raw = get_option('woo2nostr_relays', "wss://relay.damus.io\nwss://nos.lol\nwss://relay.nostr.band");
+        $raw = get_option('woo2nostr_relays', self::DEFAULT_RELAYS);
         $lines = preg_split('/[\r\n,]+/', (string) $raw);
         $out = [];
         foreach ((array) $lines as $l) {
             $l = Utils::normalizeRelay(trim($l));
-            if ($l && str_starts_with($l, 'wss://')) $out[] = $l;
+            $hasPrefix = function_exists('str_starts_with') ? str_starts_with($l, 'wss://') : strpos($l, 'wss://') === 0;
+            if ($l && $hasPrefix) $out[] = $l;
+        }
+        if (get_option('woo2nostr_paid_relays', 0)) {
+            foreach (self::PAID_RELAYS as $pr) if (!in_array($pr, $out, true)) $out[] = $pr;
         }
         return array_values(array_unique($out));
     }

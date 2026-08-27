@@ -24,7 +24,7 @@ final class Settings {
     }
 
     public static function register(): void {
-        $keys = ['woo2nostr_key_mode','woo2nostr_relays','woo2nostr_shopstr','woo2nostr_shopstr_cache_url','woo2nostr_auto_sync','woo2nostr_location','woo2nostr_bunker_uri','woo2nostr_lud16','woo2nostr_payment_preference','woo2nostr_poll_enabled'];
+        $keys = ['woo2nostr_key_mode','woo2nostr_relays','woo2nostr_paid_relays','woo2nostr_shopstr','woo2nostr_shopstr_cache_url','woo2nostr_auto_sync','woo2nostr_location','woo2nostr_bunker_uri','woo2nostr_lud16','woo2nostr_payment_preference','woo2nostr_poll_enabled'];
         foreach ($keys as $k) register_setting(self::OPTION_GROUP, $k);
         register_setting(self::OPTION_GROUP, 'woo2nostr_nsec_enc');
     }
@@ -48,6 +48,7 @@ final class Settings {
             }
         }
         update_option('woo2nostr_relays', sanitize_textarea_field($_POST['woo2nostr_relays'] ?? ''));
+        update_option('woo2nostr_paid_relays', isset($_POST['woo2nostr_paid_relays']) ? 1 : 0);
         update_option('woo2nostr_shopstr', isset($_POST['woo2nostr_shopstr']) ? 1 : 0);
         update_option('woo2nostr_shopstr_cache_url', esc_url_raw($_POST['woo2nostr_shopstr_cache_url'] ?? ''));
         update_option('woo2nostr_auto_sync', isset($_POST['woo2nostr_auto_sync']) ? 1 : 0);
@@ -76,7 +77,7 @@ final class Settings {
         if ($_SERVER['REQUEST_METHOD'] === 'POST') self::handleSave();
         settings_errors('woo2nostr');
         $mode = get_option('woo2nostr_key_mode', 'server');
-        $relays = get_option('woo2nostr_relays', "wss://relay.damus.io\nwss://nos.lol\nwss://relay.nostr.band");
+        $relays = get_option('woo2nostr_relays', \Woo2Nostr\Nostr\RelayPublisher::DEFAULT_RELAYS);
         $pubkey = get_option('woo2nostr_pubkey', '');
         $hasNsec = (bool) get_option('woo2nostr_nsec_enc', '');
         $npub = '—';
@@ -117,8 +118,13 @@ final class Settings {
                 <h2><?php esc_html_e('Relays & Shopstr', 'woo2nostr'); ?></h2>
                 <table class="form-table">
                     <tr><th><label for="woo2nostr_relays"><?php esc_html_e('Relays (one per line)', 'woo2nostr'); ?></label></th><td>
-                        <textarea id="woo2nostr_relays" name="woo2nostr_relays" rows="4" class="large-text code"><?php echo esc_textarea($relays); ?></textarea>
+                        <textarea id="woo2nostr_relays" name="woo2nostr_relays" rows="5" class="large-text code"><?php echo esc_textarea($relays); ?></textarea>
+                        <p class="description"><?php esc_html_e('Default: relay.damus.io, nos.lol, relay.nostr.band, relay.primal.net (free, good NIP-99 retention). Coracle has no dedicated relay — it uses your relays. Paid relays below are opt-in.', 'woo2nostr'); ?></p>
                         <button type="button" class="button" id="woo2nostr-test-relay"><?php esc_html_e('Test relays', 'woo2nostr'); ?></button> <span id="woo2nostr-test-result"></span>
+                    </td></tr>
+                    <tr><th><?php esc_html_e('Paid relays (opt-in)', 'woo2nostr'); ?></th><td>
+                        <label><input type="checkbox" name="woo2nostr_paid_relays" value="1" <?php checked((bool) get_option('woo2nostr_paid_relays', 0)); ?>> <?php esc_html_e('Also publish to wss://relay.nostr.wine + wss://eden.nostr.land (indefinite retention, NIP-99 supported)', 'woo2nostr'); ?></label>
+                        <p class="description"><?php esc_html_e('Requires paid membership (NIP-42 auth): nostr.wine ~18k sats one-time, eden/nostr.land ~4M msats/month. Without subscription writes will fail (payment required).', 'woo2nostr'); ?></p>
                     </td></tr>
                     <tr><th><?php esc_html_e('Shopstr compatibility', 'woo2nostr'); ?></th><td>
                         <label><input type="checkbox" name="woo2nostr_shopstr" value="1" <?php checked((bool)get_option('woo2nostr_shopstr',1)); ?>> <?php esc_html_e('Enabled by default (adds t=shopstr + image tag + cache POST)', 'woo2nostr'); ?></label>

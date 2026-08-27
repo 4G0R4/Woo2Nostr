@@ -26,7 +26,7 @@ Woo2Nostr lets merchants mirror existing WooCommerce products to Nostr classifie
 **Key custody (merchant choice)**
 * Server nsec (encrypted at rest) — enables background sync + polling.
 * NIP-07 browser extension — manual publish.
-* NIP-46 bunker (`nostrconnect://`) — remote signer.
+* NIP-46 bunker (`bunker://`, also accepts `nostrconnect://` legacy) — remote signer.
 
 **Orders (optional, on by default)**
 * Polling inbox every 2 min for NIP-17 gift-wrapped `kind 16/17` orders addressed to merchant pubkey, creates WooCommerce orders (HPOS compatible).
@@ -47,7 +47,7 @@ Woo2Nostr lets merchants mirror existing WooCommerce products to Nostr classifie
 Yes, merchant chooses server nsec, NIP-07, or NIP-46.
 
 = Which relays? =
-Default `wss://relay.damus.io, wss://nos.lol, wss://relay.nostr.band` — editable.
+Default `wss://relay.damus.io, wss://nos.lol, wss://relay.nostr.band, wss://relay.primal.net` (free, good NIP-99 retention). Paid opt-in: `wss://relay.nostr.wine` + `wss://eden.nostr.land` (requires NIP-42 auth, ~18k sats / ~4M msats/mo, indefinite retention, NIP-99 supported). Coracle has no dedicated relay — it’s a client that uses your relays (its `bucket.coracle.social` is ephemeral cache, not for NIP-99). All editable.
 
 == Changelog ==
 
