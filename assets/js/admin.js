@@ -1,53 +1,110 @@
 jQuery(function($){
-  function showPreview(pid, $out){
-    $.post(woo2nostr.ajax,{action:'woo2nostr_preview',nonce:woo2nostr.nonce,product_id:pid},function(r){
-      if(r.success){ $out.show().text(JSON.stringify(r.data,null,2)); } else { $out.show().text('Error: '+(r.data||'unknown')); }
-    });
+  if(typeof woo2nostr==='undefined'){ console.warn('woo2nostr not localized'); window.woo2nostr={ajax:'',nonce:'',mode:'server',i18n:{signing:'Signing…',noExtension:'Extension not found',connecting:'Connecting…',connected:'Connected',failed:'Failed',noPubkey:'No pubkey'}}; }
+  function showPreview(pid,$out){
+    $out.text('Loading…').show();
+    $.post(woo2nostr.ajax,{action:'woo2nostr_preview',nonce:woo2nostr.nonce,product_id:pid}).done(function(r){
+      $out.text(r.success? JSON.stringify(r.data,null,2): 'Error: '+(r.data||'unknown'));
+    }).fail(function(xhr){ $out.text('Request failed: '+xhr.statusText); });
   }
-  $('#woo2nostr-preview').on('click',function(){
-    var pid=$(this).data('id'), $out=$('#woo2nostr-preview-out');
-    showPreview(pid,$out);
+  $(document).on('click','#woo2nostr-preview',function(){
+    showPreview($(this).data('id'),$('#woo2nostr-preview-out'));
   });
+
   function toggleRows(){
     var m=$('input[name="woo2nostr_key_mode"]:checked').val();
     $('.woo2nostr-row-server').toggle(m==='server');
     $('.woo2nostr-row-bunker').toggle(m==='bunker');
+    $('.woo2nostr-row-nip07').toggle(m==='nip07');
   }
   $(document).on('change','input[name="woo2nostr_key_mode"]',toggleRows); toggleRows();
 
   $('#woo2nostr-pull-profile').on('click',function(){
     var $r=$('#woo2nostr-pull-result').text('Pulling…');
-    $.post(woo2nostr.ajax,{action:'woo2nostr_pull_profile',nonce:woo2nostr.nonce},function(r){
-      if(r.success){ $r.text('OK — lud16: '+(r.data.lud16||'—')+' pref: '+r.data.pref); if(r.data.lud16) $('#woo2nostr_lud16').val(r.data.lud16); } else $r.text('Error: '+r.data);
-    });
+    $.post(woo2nostr.ajax,{action:'woo2nostr_pull_profile',nonce:woo2nostr.nonce}).done(function(r){
+      $r.text(r.success? 'OK — lud16: '+(r.data.lud16||'—')+' pref: '+r.data.pref : 'Error: '+r.data);
+      if(r.success && r.data.lud16) $('#woo2nostr_lud16').val(r.data.lud16);
+    }).fail(function(){ $r.text('Request failed'); });
   });
   $('#woo2nostr-test-relay').on('click',function(){
     var $r=$('#woo2nostr-test-result').text('Checking…');
-    $.post(woo2nostr.ajax,{action:'woo2nostr_test_relay',nonce:woo2nostr.nonce},function(r){ $r.text(r.success? r.data.count+' relays configured' : 'Error'); });
+    $.post(woo2nostr.ajax,{action:'woo2nostr_test_relay',nonce:woo2nostr.nonce}).done(function(r){
+      $r.text(r.success? r.data.count+' relays configured' : 'Error');
+    }).fail(function(){ $r.text('Failed'); });
   });
 
+  function hasNostr(){
+    return typeof window.nostr!=='undefined' && window.nostr;
+  }
+
+  async function connectNip07($btn,$resultSel,$pubkeySel){
+    var $r=$($resultSel);
+    if(!hasNostr() || typeof window.nostr.getPublicKey!=='function'){
+      $r.css('color','#d63638').text(woo2nostr.i18n.noExtension);
+      return;
+    }
+    $btn.prop('disabled',true); $r.css('color','').text(woo2nostr.i18n.connecting);
+    try{
+      var pubkey = await window.nostr.getPublicKey();
+      if(!pubkey || !/^[0-9a-f]{64}$/i.test(pubkey)) throw new Error(woo2nostr.i18n.noPubkey);
+      var res = await $.post(woo2nostr.ajax,{action:'woo2nostr_nip07_connect',nonce:woo2nostr.nonce,pubkey:pubkey});
+      if(res.success){
+        $r.css('color','green').text(woo2nostr.i18n.connected+': '+res.data.npub);
+        if($pubkeySel) $($pubkeySel).show().find('code').text(res.data.npub+' ('+pubkey.slice(0,8)+'… )');
+        $btn.text(woo2nostr.i18n.connected);
+      } else {
+        $r.css('color','#d63638').text('Error: '+res.data);
+        $btn.prop('disabled',false);
+      }
+    }catch(e){
+      $r.css('color','#d63638').text(woo2nostr.i18n.failed+': '+(e.message||e));
+      $btn.prop('disabled',false);
+    }
+  }
+
+  $(document).on('click','#woo2nostr-connect-nip07',function(){ connectNip07($(this),'#woo2nostr-connect-result','#woo2nostr-nip07-pubkey'); });
+  $(document).on('click','#woo2nostr-connect-nip07-mb',function(){ connectNip07($(this),'#woo2nostr-connect-mb-result',null); });
+
   async function nip07Sign(event){
-    if(!window.nostr||!window.nostr.signEvent) throw new Error(woo2nostr.i18n.noExtension);
+    if(!hasNostr() || typeof window.nostr.signEvent!=='function') throw new Error(woo2nostr.i18n.noExtension);
     return await window.nostr.signEvent(event);
   }
 
-  $('#woo2nostr-publish').on('click',async function(){
+  function setPublishStatus(msg,color){
+    $('#woo2nostr-publish-status').show().css('color',color||'').text(msg);
+  }
+
+  $(document).on('click','#woo2nostr-publish',async function(){
     var $btn=$(this), pid=$btn.data('id'), orig=$btn.text();
     $btn.prop('disabled',true).text(woo2nostr.i18n.signing);
-    $.post(woo2nostr.ajax,{action:'woo2nostr_publish_single',nonce:woo2nostr.nonce,product_id:pid},async function(r){
+    setPublishStatus('Publishing…','#666');
+    try{
+      var r = await $.post(woo2nostr.ajax,{action:'woo2nostr_publish_single',nonce:woo2nostr.nonce,product_id:pid});
       if(r.success && r.data && r.data.need_sign){
-        try{
-          for(const ev of r.data.events){
-            const signed = await nip07Sign(ev);
-            await $.post(woo2nostr.ajax,{action:'woo2nostr_nip07_publish',nonce:woo2nostr.nonce,product_id:pid,event:JSON.stringify(ev),signed:JSON.stringify(signed)});
-          }
-          alert('Published via NIP-07');
-          location.reload();
-        }catch(e){ alert('NIP-07 error: '+e.message); $btn.prop('disabled',false).text(orig); }
+        if(!hasNostr()){
+          throw new Error(woo2nostr.i18n.noExtension+' Click "Connect with Extension" first.');
+        }
+        for(var i=0;i<r.data.events.length;i++){
+          var ev=r.data.events[i];
+          var signed = await nip07Sign(ev);
+          var res2 = await $.post(woo2nostr.ajax,{action:'woo2nostr_nip07_publish',nonce:woo2nostr.nonce,product_id:pid,signed:JSON.stringify(signed)});
+          if(!res2.success) throw new Error(res2.data && res2.data.error ? res2.data.error : JSON.stringify(res2.data));
+        }
+        setPublishStatus('Published via NIP-07 ✓','green');
+        setTimeout(function(){ location.reload(); },800);
         return;
       }
-      if(r.success){ alert('Published to relays'); location.reload(); }
-      else { alert('Error: '+JSON.stringify(r.data)); $btn.prop('disabled',false).text(orig); }
-    }).fail(function(){ $btn.prop('disabled',false).text(orig); });
+      if(r.success){
+        setPublishStatus('Published to relays ✓','green');
+        setTimeout(function(){ location.reload(); },800);
+      } else {
+        throw new Error(typeof r.data==='string'? r.data : JSON.stringify(r.data));
+      }
+    }catch(e){
+      var msg = e.message||String(e);
+      if(e.responseJSON && e.responseJSON.data) msg = typeof e.responseJSON.data==='string'? e.responseJSON.data : JSON.stringify(e.responseJSON.data);
+      setPublishStatus('Error: '+msg,'#d63638');
+      alert('Publish error: '+msg);
+      $btn.prop('disabled',false).text(orig);
+    }
   });
 });

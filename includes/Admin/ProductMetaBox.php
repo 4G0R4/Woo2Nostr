@@ -34,8 +34,12 @@ final class ProductMetaBox {
         if ($last) echo '<p>Last sync: '.esc_html(gmdate('Y-m-d H:i', (int)$last)).' UTC</p>';
         if ($eventId) echo '<p>Event: <code style="word-break:break-all">'.esc_html(substr($eventId,0,16)).'…</code></p>';
         echo '<p><button type="button" class="button button-primary" id="woo2nostr-publish" data-id="'.esc_attr((string)$post->ID).'">Publish to Nostr</button> <button type="button" class="button" id="woo2nostr-preview" data-id="'.esc_attr((string)$post->ID).'">Preview tags</button></p>';
+        echo '<p id="woo2nostr-publish-status" style="display:none;margin-top:6px"></p>';
         echo '<pre id="woo2nostr-preview-out" style="display:none;max-height:240px;overflow:auto;background:#f6f8fa;padding:8px;font-size:11px"></pre>';
-        if ($mode === 'nip07') echo '<p class="description">NIP-07 mode: signing happens in browser.</p>';
+        if ($mode === 'nip07') {
+            echo '<p><button type="button" class="button" id="woo2nostr-connect-nip07-mb">Connect with Extension</button> <span id="woo2nostr-connect-mb-result" style="margin-left:6px"></span></p>';
+            echo '<p class="description">NIP-07 mode: signing happens in browser via window.nostr. Connect first, then publish.</p>';
+        }
         if ($mode === 'bunker') echo '<p class="description">Bunker mode: browser will request signature via bunker relay.</p>';
         echo '<p><a href="'.esc_url(admin_url('admin.php?page=woo2nostr')).'">Settings</a> · Currency: <code>'.esc_html(get_woocommerce_currency()).'</code></p>';
     }

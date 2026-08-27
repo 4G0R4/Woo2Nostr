@@ -16,6 +16,7 @@ final class Settings {
         add_action('wp_ajax_woo2nostr_pull_profile', [self::class, 'ajaxPullProfile']);
         add_action('wp_ajax_woo2nostr_test_relay', [self::class, 'ajaxTestRelay']);
         add_action('wp_ajax_woo2nostr_nip07_publish', [self::class, 'ajaxNip07Publish']);
+        add_action('wp_ajax_woo2nostr_nip07_connect', [self::class, 'ajaxNip07Connect']);
     }
 
     public static function menu(): void {
@@ -78,7 +79,10 @@ final class Settings {
         $relays = get_option('woo2nostr_relays', "wss://relay.damus.io\nwss://nos.lol\nwss://relay.nostr.band");
         $pubkey = get_option('woo2nostr_pubkey', '');
         $hasNsec = (bool) get_option('woo2nostr_nsec_enc', '');
-        $npub = $pubkey ? \Woo2Nostr\Nostr\Utils::npub($pubkey) : '—';
+        $npub = '—';
+        if ($pubkey && preg_match('/^[0-9a-f]{64}$/i', $pubkey)) {
+            try { $npub = \Woo2Nostr\Nostr\Utils::npub($pubkey); } catch (\Throwable $e) { $npub = 'invalid pubkey'; }
+        } elseif ($pubkey) { $npub = 'invalid pubkey'; }
         ?>
         <div class="wrap woo2nostr-wrap">
             <h1>Woo2Nostr <small style="font-weight:normal">NIP-99 · Gamma Markets</small></h1>
@@ -101,6 +105,12 @@ final class Settings {
                     </td></tr>
                     <tr class="woo2nostr-row-bunker"><th><label for="woo2nostr_bunker_uri"><?php esc_html_e('Bunker URI', 'woo2nostr'); ?></label></th><td>
                         <input type="text" id="woo2nostr_bunker_uri" name="woo2nostr_bunker_uri" value="<?php echo esc_attr(get_option('woo2nostr_bunker_uri','')); ?>" class="large-text" placeholder="bunker://...">
+                    </td></tr>
+                    <tr class="woo2nostr-row-nip07"><th><?php esc_html_e('Browser extension', 'woo2nostr'); ?></th><td>
+                        <button type="button" class="button button-primary" id="woo2nostr-connect-nip07"><?php esc_html_e('Connect with Extension', 'woo2nostr'); ?></button>
+                        <span id="woo2nostr-connect-result" style="margin-left:8px"></span>
+                        <p class="description"><?php esc_html_e('Triggers window.nostr.getPublicKey(). Saves pubkey for publishing without server nsec.', 'woo2nostr'); ?></p>
+                        <p id="woo2nostr-nip07-pubkey" style="display:none"><code style="word-break:break-all"></code></p>
                     </td></tr>
                 </table>
 
@@ -220,14 +230,31 @@ final class Settings {
     public static function ajaxNip07Publish(): void {
         check_ajax_referer('woo2nostr','nonce');
         if (!current_user_can('manage_woocommerce')) wp_send_json_error('forbidden');
-        $event = json_decode(stripslashes($_POST['event'] ?? ''), true);
         $signed = json_decode(stripslashes($_POST['signed'] ?? ''), true);
-        if (!$signed || empty($signed['sig'])) wp_send_json_error('Missing signed event');
+        if (!$signed || empty($signed['sig']) || empty($signed['pubkey'])) wp_send_json_error('Missing signed event');
+        if (!preg_match('/^[0-9a-f]{64}$/i', $signed['pubkey'])) wp_send_json_error('Invalid pubkey');
+        update_option('woo2nostr_pubkey', strtolower($signed['pubkey']));
         $res = \Woo2Nostr\Nostr\RelayPublisher::publish($signed);
         if (!empty($res['ok'])) {
             $pid = (int) ($_POST['product_id'] ?? 0);
-            if ($pid) { update_post_meta($pid,'_woo2nostr_last_event_id',$signed['id']); update_post_meta($pid,'_woo2nostr_status','synced'); update_post_meta($pid,'_woo2nostr_last_sync',time()); }
+            if ($pid) { update_post_meta($pid,'_woo2nostr_last_event_id',$signed['id']); update_post_meta($pid,'_woo2nostr_status','synced'); update_post_meta($pid,'_woo2nostr_last_sync',time()); update_post_meta($pid,'_woo2nostr_last_d', self::extractD($signed)); }
         }
         wp_send_json_success($res);
+    }
+
+    private static function extractD(array $ev): string {
+        foreach ($ev['tags'] ?? [] as $t) if (($t[0] ?? '') === 'd') return $t[1] ?? '';
+        return '';
+    }
+
+    public static function ajaxNip07Connect(): void {
+        check_ajax_referer('woo2nostr','nonce');
+        if (!current_user_can('manage_woocommerce')) wp_send_json_error('forbidden');
+        $pubkey = strtolower(trim((string) ($_POST['pubkey'] ?? '')));
+        if (!preg_match('/^[0-9a-f]{64}$/i', $pubkey)) wp_send_json_error('Invalid pubkey hex (expected 64 hex chars)');
+        update_option('woo2nostr_pubkey', $pubkey);
+        $npub = '';
+        try { $npub = \Woo2Nostr\Nostr\Utils::npub($pubkey); } catch (\Throwable $e) {}
+        wp_send_json_success(['pubkey'=>$pubkey,'npub'=>$npub]);
     }
 }

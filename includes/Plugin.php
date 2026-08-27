@@ -45,16 +45,24 @@ final class Plugin {
     public function adminAssets(string $hook): void {
         $screen = get_current_screen();
         if (!$screen) return;
-        $isPlugin = str_contains($hook, 'woo2nostr') || $screen->post_type === 'product' || $screen->id === 'woocommerce_page_wc-orders';
+        $hookHit = function_exists('str_contains') ? str_contains($hook, 'woo2nostr') : strpos($hook, 'woo2nostr') !== false;
+        $isProduct = isset($screen->post_type) && $screen->post_type === 'product';
+        $isOrders = isset($screen->id) && $screen->id === 'woocommerce_page_wc-orders';
+        $isPlugin = $hookHit || $isProduct || $isOrders;
         if (!$isPlugin) return;
         wp_enqueue_style('woo2nostr-admin', WOO2NOSTR_URL . 'assets/css/admin.css', [], WOO2NOSTR_VERSION);
         wp_enqueue_script('woo2nostr-admin', WOO2NOSTR_URL . 'assets/js/admin.js', ['jquery'], WOO2NOSTR_VERSION, true);
         wp_localize_script('woo2nostr-admin', 'woo2nostr', [
             'ajax' => admin_url('admin-ajax.php'),
             'nonce' => wp_create_nonce('woo2nostr'),
+            'mode' => get_option('woo2nostr_key_mode', 'server'),
             'i18n' => [
                 'signing' => __('Signing with NIP-07…', 'woo2nostr'),
                 'noExtension' => __('NIP-07 extension not found (window.nostr).', 'woo2nostr'),
+                'connecting' => __('Connecting…', 'woo2nostr'),
+                'connected' => __('Connected', 'woo2nostr'),
+                'failed' => __('Failed', 'woo2nostr'),
+                'noPubkey' => __('Extension did not return a public key.', 'woo2nostr'),
             ],
         ]);
     }
