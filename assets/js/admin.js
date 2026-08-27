@@ -107,4 +107,48 @@ jQuery(function($){
       $btn.prop('disabled',false).text(orig);
     }
   });
+
+  $(document).on('click','#woo2nostr-bulk-nip07',async function(){
+    var $btn=$(this), $prog=$('#woo2nostr-bulk-progress'), $log=$('#woo2nostr-bulk-log');
+    if(!hasNostr()){ alert(woo2nostr.i18n.noExtension); return; }
+    $btn.prop('disabled',true); $log.show().text(''); $prog.text('Fetching products…');
+    try{
+      var idsText=$('#woo2nostr-bulk-ids').val();
+      var scope=$('input[name="scope"]:checked').val();
+      var ids=[];
+      if(scope==='selected' && idsText.trim()){
+        ids=idsText.split(',').map(function(s){return parseInt(s.trim(),10);}).filter(Boolean);
+      } else {
+        var r=$.post(woo2nostr.ajax,{action:'woo2nostr_preview_bulk',nonce:woo2nostr.nonce});
+        var res=await r;
+        if(!res.success) throw new Error(res.data||'fetch failed');
+        ids=res.data.ids;
+      }
+      if(!ids.length) throw new Error('No products found');
+      $prog.text('Publishing '+ids.length+' products via extension… keep tab open');
+      var ok=0, fail=0;
+      for(var idx=0; idx<ids.length; idx++){
+        var pid=ids[idx];
+        $prog.text('('+ (idx+1) +'/'+ids.length+') Publishing #'+pid+'…');
+        try{
+          var rp=await $.post(woo2nostr.ajax,{action:'woo2nostr_publish_single',nonce:woo2nostr.nonce,product_id:pid});
+          if(rp.success && rp.data && rp.data.need_sign){
+            for(var j=0;j<rp.data.events.length;j++){
+              var signed=await nip07Sign(rp.data.events[j]);
+              var res2=await $.post(woo2nostr.ajax,{action:'woo2nostr_nip07_publish',nonce:woo2nostr.nonce,product_id:pid,signed:JSON.stringify(signed)});
+              if(!res2.success) throw new Error(JSON.stringify(res2.data));
+            }
+            ok++; $log.prepend('✓ #'+pid+'\n');
+          } else if(rp.success){ ok++; $log.prepend('✓ #'+pid+' (server)\n'); }
+          else { fail++; $log.prepend('✗ #'+pid+' '+JSON.stringify(rp.data)+'\n'); }
+        }catch(e){ fail++; $log.prepend('✗ #'+pid+' '+(e.message||e)+'\n'); }
+        await new Promise(function(res){ setTimeout(res, 300); });
+      }
+      $prog.text('Done: '+ok+' ok, '+fail+' failed').css('color', fail?'#d63638':'green');
+      $btn.prop('disabled',false);
+    }catch(e){
+      $prog.text('Error: '+(e.message||e)).css('color','#d63638');
+      $btn.prop('disabled',false);
+    }
+  });
 });

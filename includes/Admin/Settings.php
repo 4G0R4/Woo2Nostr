@@ -92,7 +92,8 @@ final class Settings {
             <?php
             $hasGmp = extension_loaded('gmp');
             $hasSecp = extension_loaded('secp256k1');
-            if (!$hasGmp && !$hasSecp): ?><div class="notice notice-error inline"><p><?php esc_html_e('Missing PHP extension: need either secp256k1 or gmp for signing. Install php-gmp (pure PHP fallback) or php-secp256k1. Until then publishing will fail.', 'woo2nostr'); ?></p></div><?php endif; ?>
+            $hasBc = extension_loaded('bcmath');
+            if (!$hasGmp && !$hasSecp): ?><div class="notice notice-error inline"><p><?php esc_html_e('Missing PHP extension: need secp256k1 or gmp for server signing (bcmath alone not enough). Install php-gmp: sudo apt install php-gmp && restart php-fpm, or switch to NIP-07 browser extension mode for now. WP-Cron disabled also stalls background jobs — add system cron: * * * * * curl -s https://swag.btc.pub/wp-cron.php > /dev/null', 'woo2nostr'); ?> (bcmath=<?php echo $hasBc?'yes':'no'; ?>)</p></div><?php endif; ?>
             <?php if (!$hasNsec && $mode === 'server'): ?><div class="notice notice-warning inline"><p><?php esc_html_e('Server mode requires an nsec. Background sync & polling disabled until set.', 'woo2nostr'); ?></p></div><?php endif; ?>
             <?php if ($mode !== 'server'): ?><div class="notice notice-info inline"><p><?php esc_html_e('NIP-07 / Bunker modes require browser signing. Background auto-sync and polling are disabled in these modes.', 'woo2nostr'); ?></p></div><?php endif; ?>
             <form method="post">
