@@ -80,7 +80,7 @@ final class EventBuilder {
         $location = get_option('woo2nostr_location', '');
         if ($location) $tags[] = ['location', $location];
 
-        return self::wrapEvent($tags, $content);
+        return self::wrapEvent($tags, $content, self::kindForProduct($p));
     }
 
     private static function buildVariation(\WC_Product $var, ?\WC_Product $parent, string $currency, bool $shopstr): array {
@@ -121,18 +121,25 @@ final class EventBuilder {
         if ($shopstr) $tags[] = ['t', 'shopstr'];
         $location = get_option('woo2nostr_location', '');
         if ($location) $tags[] = ['location', $location];
-        return self::wrapEvent($tags, $content);
+        return self::wrapEvent($tags, $content, self::kindForProduct($var));
     }
 
-    private static function wrapEvent(array $tags, string $content): array {
+    private static function wrapEvent(array $tags, string $content, int $kind = 30402): array {
         $tags = apply_filters('woo2nostr_event_tags', $tags);
         $content = apply_filters('woo2nostr_event_content', $content);
         return [
-            'kind' => 30402,
+            'kind' => $kind,
             'created_at' => time(),
             'tags' => $tags,
             'content' => $content,
         ];
+    }
+
+    public static function kindForProduct(\WC_Product $p): int {
+        $status = $p->get_status();
+        if ($status !== 'publish') return 30403;
+        $vis = get_post_meta($p->get_id(), '_visibility', true);
+        return 30402;
     }
 
     private static function markdownContent(\WC_Product $p): string {

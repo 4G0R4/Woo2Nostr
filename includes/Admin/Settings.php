@@ -117,8 +117,9 @@ final class Settings {
                     <tr><th><label for="woo2nostr_location"><?php esc_html_e('Default location', 'woo2nostr'); ?></label></th><td>
                         <input type="text" id="woo2nostr_location" name="woo2nostr_location" value="<?php echo esc_attr(get_option('woo2nostr_location','')); ?>" class="regular-text" placeholder="Austin, TX">
                     </td></tr>
-                    <tr><th><?php esc_html_e('Auto-sync', 'woo2nostr'); ?></th><td>
-                        <label><input type="checkbox" name="woo2nostr_auto_sync" value="1" <?php checked((bool)get_option('woo2nostr_auto_sync',0)); ?>> <?php esc_html_e('Republish on product save/stock change (server mode only)', 'woo2nostr'); ?></label>
+                    <tr><th><?php esc_html_e('Auto-sync on update', 'woo2nostr'); ?></th><td>
+                        <label><input type="checkbox" name="woo2nostr_auto_sync" value="1" <?php checked((bool)get_option('woo2nostr_auto_sync',0)); ?>> <?php esc_html_e('Enabled — any update to a Nostr-enabled product republishes to relays (price, stock, images, status, deletion → draft 30403/deletion 5). Debounced, server mode only.', 'woo2nostr'); ?></label>
+                        <p class="description"><?php esc_html_e('Hooks: save, variation save, stock/price change, status/trash/delete. NIP-07/Bunker modes still require manual publish.', 'woo2nostr'); ?></p>
                     </td></tr>
                 </table>
 
