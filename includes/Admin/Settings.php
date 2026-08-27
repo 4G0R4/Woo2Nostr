@@ -51,7 +51,9 @@ final class Settings {
         update_option('woo2nostr_shopstr_cache_url', esc_url_raw($_POST['woo2nostr_shopstr_cache_url'] ?? ''));
         update_option('woo2nostr_auto_sync', isset($_POST['woo2nostr_auto_sync']) ? 1 : 0);
         update_option('woo2nostr_location', sanitize_text_field($_POST['woo2nostr_location'] ?? ''));
-        update_option('woo2nostr_bunker_uri', sanitize_text_field($_POST['woo2nostr_bunker_uri'] ?? ''));
+        $bunker = trim((string) ($_POST['woo2nostr_bunker_uri'] ?? ''));
+        if ($bunker !== '' && str_starts_with($bunker, 'nostrconnect://')) $bunker = 'bunker://' . substr($bunker, 15);
+        update_option('woo2nostr_bunker_uri', sanitize_text_field($bunker));
         update_option('woo2nostr_lud16', sanitize_text_field($_POST['woo2nostr_lud16'] ?? ''));
         update_option('woo2nostr_payment_preference', sanitize_text_field($_POST['woo2nostr_payment_preference'] ?? 'manual'));
         update_option('woo2nostr_poll_enabled', isset($_POST['woo2nostr_poll_enabled']) ? 1 : 0);
@@ -91,14 +93,14 @@ final class Settings {
                     <tr><th><?php esc_html_e('Mode', 'woo2nostr'); ?></th><td>
                         <label><input type="radio" name="woo2nostr_key_mode" value="server" <?php checked($mode,'server'); ?>> <?php esc_html_e('Server nsec (encrypted, enables background sync + polling)', 'woo2nostr'); ?></label><br>
                         <label><input type="radio" name="woo2nostr_key_mode" value="nip07" <?php checked($mode,'nip07'); ?>> <?php esc_html_e('NIP-07 browser extension (window.nostr)', 'woo2nostr'); ?></label><br>
-                        <label><input type="radio" name="woo2nostr_key_mode" value="bunker" <?php checked($mode,'bunker'); ?>> <?php esc_html_e('NIP-46 bunker (nostrconnect://)', 'woo2nostr'); ?></label>
+                        <label><input type="radio" name="woo2nostr_key_mode" value="bunker" <?php checked($mode,'bunker'); ?>> <?php esc_html_e('NIP-46 bunker (bunker:// — also accepts nostrconnect://)', 'woo2nostr'); ?></label>
                     </td></tr>
                     <tr class="woo2nostr-row-server"><th><label for="woo2nostr_nsec"><?php esc_html_e('Private key (nsec or 64-hex)', 'woo2nostr'); ?></label></th><td>
                         <input type="password" id="woo2nostr_nsec" name="woo2nostr_nsec" value="<?php echo $hasNsec ? '••••••••••••••••' : ''; ?>" placeholder="nsec1… or hex" class="regular-text" autocomplete="off">
                         <p class="description"><?php esc_html_e('Stored encrypted with AUTH_KEY. Leave masked to keep existing.', 'woo2nostr'); ?></p>
                     </td></tr>
                     <tr class="woo2nostr-row-bunker"><th><label for="woo2nostr_bunker_uri"><?php esc_html_e('Bunker URI', 'woo2nostr'); ?></label></th><td>
-                        <input type="text" id="woo2nostr_bunker_uri" name="woo2nostr_bunker_uri" value="<?php echo esc_attr(get_option('woo2nostr_bunker_uri','')); ?>" class="large-text" placeholder="nostrconnect://...">
+                        <input type="text" id="woo2nostr_bunker_uri" name="woo2nostr_bunker_uri" value="<?php echo esc_attr(get_option('woo2nostr_bunker_uri','')); ?>" class="large-text" placeholder="bunker://...">
                     </td></tr>
                 </table>
 

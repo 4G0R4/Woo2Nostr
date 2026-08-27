@@ -91,10 +91,16 @@ final class Nip07Signer implements SignerInterface {
 
 final class BunkerSigner implements SignerInterface {
     public function canSign(): bool {
-        $uri = get_option('woo2nostr_bunker_uri', '');
-        return get_option('woo2nostr_key_mode', 'server') === 'bunker' && !empty($uri);
+        $uri = trim((string) get_option('woo2nostr_bunker_uri', ''));
+        return get_option('woo2nostr_key_mode', 'server') === 'bunker' && $uri !== '' && (str_starts_with($uri, 'bunker://') || str_starts_with($uri, 'nostrconnect://'));
     }
     public function sign(array $event): ?array { return null; }
+
+    public static function normalizeUri(string $uri): string {
+        $uri = trim($uri);
+        if (str_starts_with($uri, 'nostrconnect://')) return 'bunker://' . substr($uri, 15);
+        return $uri;
+    }
 }
 
 final class SignerFactory {
