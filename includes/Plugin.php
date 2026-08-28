@@ -46,8 +46,11 @@ final class Plugin {
 
     private function migrateRelays(): void {
         if (get_option('woo2nostr_version') !== WOO2NOSTR_VERSION) {
-            $oldDefault = "wss://relay.damus.io\nwss://nos.lol\nwss://relay.nostr.band\nwss://relay.primal.net";
-            if (get_option('woo2nostr_relays', '') === $oldDefault) {
+            $previousDefaults = [
+                "wss://relay.damus.io\nwss://nos.lol\nwss://relay.nostr.band\nwss://relay.primal.net",
+                "wss://relay.primal.net\nwss://nos.lol\nwss://relay.nostr.net\nwss://auth.nostr1.com\nwss://relay.damus.io",
+            ];
+            if (in_array(get_option('woo2nostr_relays', ''), $previousDefaults, true)) {
                 update_option('woo2nostr_relays', \Woo2Nostr\Nostr\RelayPublisher::DEFAULT_RELAYS);
             }
             update_option('woo2nostr_version', WOO2NOSTR_VERSION);

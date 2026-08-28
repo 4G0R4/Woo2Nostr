@@ -47,7 +47,7 @@ Woo2Nostr lets merchants mirror existing WooCommerce products to Nostr classifie
 Yes, merchant chooses server nsec, NIP-07, or NIP-46.
 
 = Which relays? =
-Default `wss://relay.primal.net, wss://nos.lol, wss://relay.nostr.net, wss://auth.nostr1.com, wss://relay.damus.io` (free, good NIP-99 retention). Paid opt-in: `wss://relay.nostr.wine` + `wss://eden.nostr.land` (requires NIP-42 auth, ~18k sats / ~4M msats/mo, indefinite retention, NIP-99 supported). Coracle has no dedicated relay — it’s a client that uses your relays (its `bucket.coracle.social` is ephemeral cache, not for NIP-99). All editable.
+Default `wss://relay.primal.net, wss://nos.lol, wss://relay.nostr.band, wss://relay.nostr.net, wss://auth.nostr1.com, wss://relay.damus.io` (free, good NIP-99 retention). Paid opt-in: `wss://relay.nostr.wine` + `wss://eden.nostr.land` (requires NIP-42 auth, ~18k sats / ~4M msats/mo, indefinite retention, NIP-99 supported). Coracle has no dedicated relay — it’s a client that uses your relays (its `bucket.coracle.social` is ephemeral cache, not for NIP-99). All editable.
 
 == Changelog ==
 

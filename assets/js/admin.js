@@ -86,7 +86,7 @@ jQuery(function($){
     $('#woo2nostr-publish-status').show().css('color',color||'').text(msg);
   }
 
-  var RELAYS = (woo2nostr.relays && woo2nostr.relays.length)? woo2nostr.relays : ['wss://relay.primal.net','wss://nos.lol','wss://relay.nostr.net','wss://auth.nostr1.com','wss://relay.damus.io'];
+  var RELAYS = (woo2nostr.relays && woo2nostr.relays.length)? woo2nostr.relays : ['wss://relay.primal.net','wss://nos.lol','wss://relay.nostr.band','wss://relay.nostr.net','wss://auth.nostr1.com','wss://relay.damus.io'];
 
   function wsOkPending(relay, ev){
     return new Promise(function(resolve){

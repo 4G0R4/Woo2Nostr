@@ -134,7 +134,7 @@ final class Settings {
                 <table class="form-table">
                     <tr><th><label for="woo2nostr_relays"><?php esc_html_e('Relays (one per line)', 'woo2nostr'); ?></label></th><td>
                         <textarea id="woo2nostr_relays" name="woo2nostr_relays" rows="5" class="large-text code"><?php echo esc_textarea($relays); ?></textarea>
-                        <p class="description"><?php esc_html_e('Default: relay.primal.net, nos.lol, relay.nostr.net, auth.nostr1.com, relay.damus.io (free, good NIP-99 retention). Coracle has no dedicated relay — it uses your relays. Paid relays below are opt-in.', 'woo2nostr'); ?></p>
+                        <p class="description"><?php esc_html_e('Default: relay.primal.net, nos.lol, relay.nostr.band, relay.nostr.net, auth.nostr1.com, relay.damus.io (free, good NIP-99 retention). Coracle has no dedicated relay — it uses your relays. Paid relays below are opt-in.', 'woo2nostr'); ?></p>
                         <button type="button" class="button" id="woo2nostr-test-relay"><?php esc_html_e('Test relays', 'woo2nostr'); ?></button> <span id="woo2nostr-test-result"></span>
                     </td></tr>
                     <tr><th><?php esc_html_e('Paid relays (opt-in)', 'woo2nostr'); ?></th><td>
