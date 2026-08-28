@@ -22,6 +22,7 @@ final class BulkActions {
     }
 
     public static function handleBulk(string $redirect, string $action, array $ids): string {
+        $ids = array_values(array_filter(array_map('intval', $ids), fn($id) => !Queue::isExcluded($id)));
         if ($action === 'woo2nostr_publish') {
             $mode = get_option('woo2nostr_key_mode', 'server');
             if ($mode !== 'server') {
@@ -59,15 +60,16 @@ final class BulkActions {
     public static function renderBulk(): void {
         $mode = get_option('woo2nostr_key_mode', 'server');
         $isNip07 = $mode !== 'server';
+        $allIds = Queue::publishedIds();
+        $excluded = count(wc_get_products(['limit'=>-1,'status'=>['publish'],'return'=>'ids'])) - count($allIds);
         if (isset($_POST['_woo2nostr_bulk_nonce']) && wp_verify_nonce($_POST['_woo2nostr_bulk_nonce'],'woo2nostr_bulk')) {
             $scope = sanitize_text_field($_POST['scope'] ?? 'selected');
             $ids = [];
             if ($scope === 'all') {
-                $q = wc_get_products(['limit'=>-1,'status'=>['publish'],'return'=>'ids']);
-                $ids = $q;
+                $ids = $allIds;
             } else {
                 $raw = sanitize_text_field($_POST['ids'] ?? '');
-                $ids = array_filter(array_map('intval', explode(',', $raw)));
+                $ids = array_values(array_filter(array_map('intval', explode(',', $raw)), fn($id) => !Queue::isExcluded($id)));
             }
             if ($ids) {
                 if ($isNip07) {
@@ -100,7 +102,7 @@ final class BulkActions {
                 <?php wp_nonce_field('woo2nostr_bulk','_woo2nostr_bulk_nonce'); ?>
                 <table class="form-table">
                     <tr><th>Scope</th><td>
-                        <label><input type="radio" name="scope" value="all" checked> All published products</label><br>
+                        <label><input type="radio" name="scope" value="all" checked> All published products <em>(<?php echo (int) count($allIds); ?> eligible<?php echo $excluded > 0 ? ' · '.$excluded.' excluded' : ''; ?>)</em></label><br>
                         <label><input type="radio" name="scope" value="selected"> IDs (comma-separated) <input type="text" name="ids" id="woo2nostr-bulk-ids" placeholder="12,34,56" class="regular-text"></label>
                     </td></tr>
                 </table>
@@ -124,10 +126,12 @@ final class BulkActions {
         check_ajax_referer('woo2nostr','nonce');
         if (!current_user_can('manage_woocommerce')) wp_send_json_error('forbidden');
         $ids = array_map('intval', (array) ($_POST['ids'] ?? []));
+        $total = null;
         if (!$ids) {
-            $ids = wc_get_products(['limit'=>-1,'status'=>['publish'],'return'=>'ids']);
+            $ids = Queue::publishedIds();
+            $total = count($ids);
             $ids = array_slice($ids, 0, 300);
         }
-        wp_send_json_success(['ids'=>$ids,'count'=>count($ids)]);
+        wp_send_json_success(['ids'=>$ids,'count'=>count($ids),'total'=>$total]);
     }
 }

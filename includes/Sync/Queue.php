@@ -26,14 +26,24 @@ final class Queue {
         add_action('before_delete_post', [self::class, 'onTrashDelete']);
     }
 
+    public static function isExcluded(int $productId): bool {
+        return get_post_meta($productId, '_woo2nostr_excluded', true) === 'yes';
+    }
+
+    public static function publishedIds(): array {
+        $ids = wc_get_products(['limit' => -1, 'status' => ['publish'], 'return' => 'ids']);
+        return array_values(array_filter(array_map('intval', $ids), fn($id) => !self::isExcluded($id)));
+    }
+
     private static function shouldAutoSync(int $productId): bool {
         if (!get_option('woo2nostr_auto_sync', 0)) return false;
+        if (self::isExcluded($productId)) return false;
         if (wp_is_post_revision($productId) || wp_is_post_autosave($productId)) return false;
         $type = get_post_type($productId);
         if ($type === 'product_variation') {
             $parent = wp_get_post_parent_id($productId);
-            if ($parent && get_post_meta($parent, '_woo2nostr_enabled', true) === 'yes') return true;
-            return get_post_meta($productId, '_woo2nostr_enabled', true) === 'yes';
+            if ($parent && get_post_meta($parent, '_woo2nostr_enabled', true) === 'yes' && !self::isExcluded($parent)) return true;
+            return get_post_meta($productId, '_woo2nostr_enabled', true) === 'yes' && !self::isExcluded($parent);
         }
         if ($type !== 'product') return false;
         return get_post_meta($productId, '_woo2nostr_enabled', true) === 'yes';
@@ -53,7 +63,9 @@ final class Queue {
     }
 
     public static function enqueueBulk(array $ids): void {
-        $chunks = array_chunk(array_map('intval', $ids), 25);
+        $ids = array_values(array_filter(array_map('intval', $ids), fn($id) => !self::isExcluded($id) && wc_get_product($id)));
+        if (!$ids) return;
+        $chunks = array_chunk($ids, 25);
         foreach ($chunks as $chunk) {
             if (function_exists('as_enqueue_async_action')) {
                 as_enqueue_async_action(self::HOOK_BULK, ['ids' => $chunk], self::GROUP);
@@ -78,6 +90,10 @@ final class Queue {
     public static function syncProduct(int $productId): array {
         $product = wc_get_product($productId);
         if (!$product) return ['ok' => false, 'error' => 'Product not found'];
+        if (self::isExcluded($productId)) {
+            update_post_meta($productId, '_woo2nostr_status', 'excluded');
+            return ['ok' => false, 'error' => 'excluded'];
+        }
         $mode = get_option('woo2nostr_key_mode', 'server');
         if ($mode !== 'server') {
             update_post_meta($productId, '_woo2nostr_status', 'pending_nip07');

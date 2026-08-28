@@ -206,7 +206,8 @@ final class Settings {
             $failed = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->postmeta} WHERE meta_key='_woo2nostr_status' AND meta_value='failed'");
             $pending = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->postmeta} WHERE meta_key='_woo2nostr_status' AND meta_value='pending'");
             $pendingNip = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->postmeta} WHERE meta_key='_woo2nostr_status' AND meta_value='pending_nip07'");
-            echo '<p><strong>Nostr products:</strong> synced='.(int)$synced.' failed='.(int)$failed.' pending='.(int)$pending.' pending_nip07='.(int)$pendingNip.'</p>';
+            $excluded = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->postmeta} WHERE meta_key='_woo2nostr_excluded' AND meta_value='yes'");
+            echo '<p><strong>Nostr products:</strong> synced='.(int)$synced.' failed='.(int)$failed.' pending='.(int)$pending.' pending_nip07='.(int)$pendingNip.' excluded='.(int)$excluded.'</p>';
             if ((int)$failed > 0) {
                 $sample = $wpdb->get_col("SELECT post_id FROM {$wpdb->postmeta} WHERE meta_key='_woo2nostr_status' AND meta_value='failed' LIMIT 3");
                 echo '<p><strong>⚠ Recent errors (sample #'.implode(',', $sample).'):</strong></p>';

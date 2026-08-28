@@ -23,12 +23,15 @@ final class ProductMetaBox {
 
     public static function render(\WP_Post $post): void {
         $enabled = get_post_meta($post->ID, '_woo2nostr_enabled', true);
+        $excluded = get_post_meta($post->ID, '_woo2nostr_excluded', true);
         $status = get_post_meta($post->ID, '_woo2nostr_status', true);
         $last = get_post_meta($post->ID, '_woo2nostr_last_sync', true);
         $eventId = get_post_meta($post->ID, '_woo2nostr_last_event_id', true);
         $mode = get_option('woo2nostr_key_mode','server');
         wp_nonce_field('woo2nostr_mb','_woo2nostr_mb');
         echo '<p><label><input type="checkbox" name="_woo2nostr_enabled" value="yes" '.checked($enabled,'yes',false).'> Enable Nostr mirror</label></p>';
+        echo '<p><label><input type="checkbox" name="_woo2nostr_excluded" value="yes" '.checked($excluded,'yes',false).'> Exclude from sync/bulk queue</label></p>';
+        if ($excluded === 'yes') echo '<p style="color:#b26b00"><strong>Excluded</strong> — skipped by “All published products” and auto-sync, but the Publish button still works.</p>';
         echo '<p class="description">One card per variation; bundles as single composite.</p>';
         if ($status) echo '<p>Status: <code>'.esc_html($status).'</code></p>';
         if ($last) echo '<p>Last sync: '.esc_html(gmdate('Y-m-d H:i', (int)$last)).' UTC</p>';
@@ -48,6 +51,7 @@ final class ProductMetaBox {
         if (!isset($_POST['_woo2nostr_mb']) || !wp_verify_nonce($_POST['_woo2nostr_mb'],'woo2nostr_mb')) return;
         if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) return;
         update_post_meta($postId, '_woo2nostr_enabled', isset($_POST['_woo2nostr_enabled']) ? 'yes' : 'no');
+        update_post_meta($postId, '_woo2nostr_excluded', isset($_POST['_woo2nostr_excluded']) ? 'yes' : 'no');
     }
 
     public static function ajaxPreview(): void {
@@ -65,6 +69,7 @@ final class ProductMetaBox {
         if (!current_user_can('edit_products')) wp_send_json_error('forbidden');
         $id = (int) ($_POST['product_id'] ?? 0);
         $mode = get_option('woo2nostr_key_mode','server');
+        if (get_post_meta($id, '_woo2nostr_excluded', true) === 'yes') wp_send_json_error('excluded');
         if ($mode !== 'server') {
             $p = wc_get_product($id);
             if (!$p) wp_send_json_error('not found');
@@ -84,6 +89,7 @@ final class ProductMetaBox {
         $s = get_post_meta($postId,'_woo2nostr_status',true);
         $err = get_post_meta($postId,'_woo2nostr_last_error',true);
         if ($s === 'synced') echo '<span style="color:green">● synced</span>';
+        elseif ($s === 'excluded') echo '<span style="color:#b26b00">● excluded</span>';
         elseif ($s === 'failed') echo '<span title="'.esc_attr($err).'" style="color:#d63638;cursor:help">● failed</span>';
         elseif ($s) echo '<span title="'.esc_attr($err).'" style="color:#d63638">● '.esc_html($s).'</span>';
         else echo '<span style="color:#999">—</span>';
