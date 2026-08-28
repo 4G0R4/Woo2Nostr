@@ -113,7 +113,7 @@ final class RelayPublisher {
             if (is_array($j) && $j[0] === 'OK') return ['ok' => (bool) $j[2], 'msg' => $j[3] ?? ''];
             return ['ok' => true, 'raw' => $decoded];
         }
-        return ['ok' => true, 'note' => 'sent, no OK parsed'];
+        return ['ok' => false, 'note' => 'no OK ack parsed (fsockopen path is unreliable — verify on relays before trusting status)'];
     }
 
     private static function wsEncode(string $payload): string {
@@ -137,6 +137,10 @@ final class RelayPublisher {
         elseif ($len === 127) { $len = unpack('J', substr($payload, 2, 8))[1]; $offset = 10; }
         if ($masked) $offset += 4;
         return substr($payload, $offset, $len);
+    }
+
+    public static function postCache(array $event): void {
+        self::postToShopstrCache($event);
     }
 
     private static function postToShopstrCache(array $event): void {

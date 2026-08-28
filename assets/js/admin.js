@@ -31,6 +31,19 @@ jQuery(function($){
       $r.text(r.success? r.data.count+' relays configured' : 'Error');
     }).fail(function(){ $r.text('Failed'); });
   });
+  $(document).on('click','#woo2nostr-verify',function(){
+    var $b=$(this), $r=$('#woo2nostr-verify-result');
+    $b.prop('disabled',true); $r.text('Querying relays…');
+    $.post(woo2nostr.ajax,{action:'woo2nostr_verify',nonce:woo2nostr.nonce}).done(function(res){
+      if(res.success){
+        $r.html('Found <strong>'+res.data.count+'</strong> listing events (kind 30402/30403) on '+res.data.relay+'<br><code style="font-size:11px">'+res.data.d_tags.slice(0,10).map(escapeHtml).join('<br>')+'</code>');
+      } else {
+        $r.css('color','#d63638').text('Error: '+res.data);
+      }
+      $b.prop('disabled',false);
+    }).fail(function(){ $r.text('Request failed'); $b.prop('disabled',false); });
+  });
+  function escapeHtml(s){ return String(s).replace(/[&<>"']/g, function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
 
   function hasNostr(){
     return typeof window.nostr!=='undefined' && window.nostr;
@@ -73,26 +86,74 @@ jQuery(function($){
     $('#woo2nostr-publish-status').show().css('color',color||'').text(msg);
   }
 
+  var RELAYS = (woo2nostr.relays && woo2nostr.relays.length)? woo2nostr.relays : ['wss://relay.damus.io','wss://nos.lol','wss://relay.nostr.band','wss://relay.primal.net'];
+
+  function wsOkPending(relay, ev){
+    return new Promise(function(resolve){
+      var ws, timer, done=false;
+      var finish=function(res){ if(done) return; done=true; clearTimeout(timer); try{ ws&&ws.close(); }catch(e){} resolve(res); };
+      try{ ws = new WebSocket(relay); }
+      catch(e){ return finish({relay:relay,ok:false,error:'websocket construct failed'}); }
+      timer = setTimeout(function(){ finish({relay:relay,ok:false,error:'timeout 9s'}); },9000);
+      ws.onopen = function(){ try{ ws.send(JSON.stringify(['EVENT',ev])); }catch(e){ finish({relay:relay,ok:false,error:'send failed'}); } };
+      ws.onmessage = function(m){
+        var j; try{ j=JSON.parse(m.data); }catch(e){ return; }
+        if(j && j[0]==='OK' && j[1]===ev.id){ finish({relay:relay,ok:!!j[2],msg:j[3]||''}); }
+      };
+      ws.onerror = function(){ finish({relay:relay,ok:false,error:'connect failed'}); };
+      ws.onclose = function(){ finish({relay:relay,ok:false,error:'closed before OK'}); };
+    });
+  }
+
+  async function publishDirect(ev){
+    var results = await Promise.all(RELAYS.map(function(r){ return wsOkPending(r,ev); }));
+    return results;
+  }
+
+  function countOk(results){ return results.filter(function(r){ return r.ok; }).length; }
+
+  async function recordNip07Publish(pid, signed){
+    var res2 = await $.post(woo2nostr.ajax,{action:'woo2nostr_nip07_publish',nonce:woo2nostr.nonce,product_id:pid,signed:JSON.stringify(signed),record:1});
+    if(!res2.success) throw new Error(res2.data && res2.data.error ? res2.data.error : JSON.stringify(res2.data));
+    return res2;
+  }
+
+  async function publishProductNip07(pid){
+    if(!hasNostr()) throw new Error(woo2nostr.i18n.noExtension);
+    var r = await $.post(woo2nostr.ajax,{action:'woo2nostr_publish_single',nonce:woo2nostr.nonce,product_id:pid});
+    if(!(r.success && r.data && r.data.need_sign)) throw new Error(typeof r.data==='string'? r.data : JSON.stringify(r.data));
+    var total={ok:0,fail:0}, detail=[];
+    for(var i=0;i<r.data.events.length;i++){
+      var ev=r.data.events[i];
+      var signed = await nip07Sign(ev);
+      var results = await publishDirect(signed);
+      var ok = countOk(results);
+      detail.push(ok+'/'+results.length+' relays OK');
+      if(ok>0){
+        total.ok++;
+        try{ await recordNip07Publish(pid, signed); }catch(e){ detail.push('meta:'+e.message); }
+      } else {
+        total.fail++;
+        var bad = results.filter(function(x){return !x.ok;}).map(function(x){ return x.relay+'('+(x.msg||x.error||'?')+')'; }).join(', ');
+        throw new Error('No relay accepted event '+i+' ['+bad+']');
+      }
+    }
+    return {pid:pid, total:total, detail:detail};
+  }
+
   $(document).on('click','#woo2nostr-publish',async function(){
     var $btn=$(this), pid=$btn.data('id'), orig=$btn.text();
     $btn.prop('disabled',true).text(woo2nostr.i18n.signing);
     setPublishStatus('Publishing…','#666');
     try{
-      var r = await $.post(woo2nostr.ajax,{action:'woo2nostr_publish_single',nonce:woo2nostr.nonce,product_id:pid});
-      if(r.success && r.data && r.data.need_sign){
-        if(!hasNostr()){
-          throw new Error(woo2nostr.i18n.noExtension+' Click "Connect with Extension" first.');
-        }
-        for(var i=0;i<r.data.events.length;i++){
-          var ev=r.data.events[i];
-          var signed = await nip07Sign(ev);
-          var res2 = await $.post(woo2nostr.ajax,{action:'woo2nostr_nip07_publish',nonce:woo2nostr.nonce,product_id:pid,signed:JSON.stringify(signed)});
-          if(!res2.success) throw new Error(res2.data && res2.data.error ? res2.data.error : JSON.stringify(res2.data));
-        }
-        setPublishStatus('Published via NIP-07 ✓','green');
+      var mode=woo2nostr.mode||'server';
+      if(mode!=='server'){
+        var out = await publishProductNip07(pid);
+        setPublishStatus('Published via NIP-07 ✓ ('+out.detail.join('; ')+')','green');
         setTimeout(function(){ location.reload(); },800);
         return;
       }
+      var r = await $.post(woo2nostr.ajax,{action:'woo2nostr_publish_single',nonce:woo2nostr.nonce,product_id:pid});
       if(r.success){
         setPublishStatus('Published to relays ✓','green');
         setTimeout(function(){ location.reload(); },800);
@@ -126,25 +187,22 @@ jQuery(function($){
       }
       if(!ids.length) throw new Error('No products found');
       $prog.text('Publishing '+ids.length+' products via extension… keep tab open');
-      var ok=0, fail=0;
+      var ok=0, fail=0, fails=[];
       for(var idx=0; idx<ids.length; idx++){
         var pid=ids[idx];
         $prog.text('('+ (idx+1) +'/'+ids.length+') Publishing #'+pid+'…');
         try{
-          var rp=await $.post(woo2nostr.ajax,{action:'woo2nostr_publish_single',nonce:woo2nostr.nonce,product_id:pid});
-          if(rp.success && rp.data && rp.data.need_sign){
-            for(var j=0;j<rp.data.events.length;j++){
-              var signed=await nip07Sign(rp.data.events[j]);
-              var res2=await $.post(woo2nostr.ajax,{action:'woo2nostr_nip07_publish',nonce:woo2nostr.nonce,product_id:pid,signed:JSON.stringify(signed)});
-              if(!res2.success) throw new Error(JSON.stringify(res2.data));
-            }
-            ok++; $log.prepend('✓ #'+pid+'\n');
-          } else if(rp.success){ ok++; $log.prepend('✓ #'+pid+' (server)\n'); }
-          else { fail++; $log.prepend('✗ #'+pid+' '+JSON.stringify(rp.data)+'\n'); }
-        }catch(e){ fail++; $log.prepend('✗ #'+pid+' '+(e.message||e)+'\n'); }
+          var out=await publishProductNip07(pid);
+          ok++; $log.prepend('✓ #'+pid+' ('+out.detail.join('; ')+')\n');
+        }catch(e){
+          fail++; fails.push(pid);
+          var msg=(e.message||e);
+          if(e.responseJSON && e.responseJSON.data) msg=JSON.stringify(e.responseJSON.data);
+          $log.prepend('✗ #'+pid+' '+msg+'\n');
+        }
         await new Promise(function(res){ setTimeout(res, 300); });
       }
-      $prog.text('Done: '+ok+' ok, '+fail+' failed').css('color', fail?'#d63638':'green');
+      $prog.text('Done: '+ok+' ok, '+fail+' failed'+(fail? ' — '+fails.join(', '):'')).css('color', fail?'#d63638':'green');
       $btn.prop('disabled',false);
     }catch(e){
       $prog.text('Error: '+(e.message||e)).css('color','#d63638');

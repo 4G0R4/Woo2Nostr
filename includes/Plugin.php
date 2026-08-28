@@ -57,6 +57,7 @@ final class Plugin {
             'ajax' => admin_url('admin-ajax.php'),
             'nonce' => wp_create_nonce('woo2nostr'),
             'mode' => get_option('woo2nostr_key_mode', 'server'),
+            'relays' => \Woo2Nostr\Nostr\RelayPublisher::getRelays(),
             'i18n' => [
                 'signing' => __('Signing with NIP-07…', 'woo2nostr'),
                 'noExtension' => __('NIP-07 extension not found (window.nostr).', 'woo2nostr'),

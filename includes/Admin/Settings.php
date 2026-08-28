@@ -14,6 +14,7 @@ final class Settings {
         add_action('admin_menu', [self::class, 'menu']);
         add_action('admin_init', [self::class, 'register']);
         add_action('wp_ajax_woo2nostr_pull_profile', [self::class, 'ajaxPullProfile']);
+        add_action('wp_ajax_woo2nostr_verify', [self::class, 'ajaxVerify']);
         add_action('wp_ajax_woo2nostr_test_relay', [self::class, 'ajaxTestRelay']);
         add_action('wp_ajax_woo2nostr_nip07_publish', [self::class, 'ajaxNip07Publish']);
         add_action('wp_ajax_woo2nostr_nip07_connect', [self::class, 'ajaxNip07Connect']);
@@ -216,6 +217,7 @@ final class Settings {
                 if (!$hasGmp && !$hasSecp) echo '<p style="color:#d63638"><strong>Root cause:</strong> php-gmp not installed. Install it then re-run bulk publish.</p>';
             }
             echo '<p>Listings (30402) appear on marketplace clients (Shopstr, Coracle) — not on nsite (nsite shows kind 30023). Verify at <a href="https://nostr.band/search?q=30402" target="_blank">nostr.band</a> or <a href="https://primal.net/search" target="_blank">Primal</a> with your npub.</p>';
+            echo '<p><button type="button" class="button" id="woo2nostr-verify">Verify listings on relays</button> <span id="woo2nostr-verify-result"></span></p>';
             echo '<p><a href="'.esc_url(admin_url('admin.php?page=wc-status&tab=action-scheduler&s=woo2nostr')).'" class="button">View Action Scheduler queue</a> <a href="'.esc_url(admin_url('admin.php?page=wc-status&tab=logs')).'" class="button">Logs</a>';
             if ((int)$failed > 0 && $hasGmp): echo ' <a href="'.esc_url(admin_url('admin.php?page=woo2nostr-bulk')).'" class="button button-primary">Retry failed (bulk)</a>'; endif;
             echo '</p>';
@@ -290,12 +292,38 @@ final class Settings {
         if (!$signed || empty($signed['sig']) || empty($signed['pubkey'])) wp_send_json_error('Missing signed event');
         if (!preg_match('/^[0-9a-f]{64}$/i', $signed['pubkey'])) wp_send_json_error('Invalid pubkey');
         update_option('woo2nostr_pubkey', strtolower($signed['pubkey']));
+        $record = !empty($_POST['record']) ? (bool) $_POST['record'] : false;
+        if ($record) {
+            $pid = (int) ($_POST['product_id'] ?? 0);
+            if ($pid) { update_post_meta($pid,'_woo2nostr_last_event_id',$signed['id']); update_post_meta($pid,'_woo2nostr_status','synced'); update_post_meta($pid,'_woo2nostr_last_sync',time()); update_post_meta($pid,'_woo2nostr_last_d', self::extractD($signed)); delete_post_meta($pid,'_woo2nostr_last_error'); }
+            if (get_option('woo2nostr_shopstr', 1)) \Woo2Nostr\Nostr\RelayPublisher::postCache($signed);
+            wp_send_json_success(['recorded'=>true,'pubkey'=>strtolower($signed['pubkey'])]);
+        }
         $res = \Woo2Nostr\Nostr\RelayPublisher::publish($signed);
         if (!empty($res['ok'])) {
             $pid = (int) ($_POST['product_id'] ?? 0);
             if ($pid) { update_post_meta($pid,'_woo2nostr_last_event_id',$signed['id']); update_post_meta($pid,'_woo2nostr_status','synced'); update_post_meta($pid,'_woo2nostr_last_sync',time()); update_post_meta($pid,'_woo2nostr_last_d', self::extractD($signed)); }
         }
         wp_send_json_success($res);
+    }
+
+    public static function ajaxVerify(): void {
+        check_ajax_referer('woo2nostr','nonce');
+        if (!current_user_can('manage_woocommerce')) wp_send_json_error('forbidden');
+        $pubkey = get_option('woo2nostr_pubkey','');
+        if (!$pubkey) wp_send_json_error('No pubkey set');
+        $events = [];
+        foreach ([30402, 30403] as $kind) {
+            $e = \Woo2Nostr\Nostr\RelayPublisher::fetchEvents(['kinds'=>[$kind],'authors'=>[$pubkey],'limit'=>100]);
+            $events = array_merge($events, $e);
+        }
+        $dTags = [];
+        $times = [];
+        foreach ($events as $ev) {
+            foreach ($ev['tags'] ?? [] as $t) if (($t[0] ?? '') === 'd' && !in_array($t[1] ?? '', $dTags, true)) $dTags[] = $t[1];
+            $times[] = $ev['created_at'];
+        }
+        wp_send_json_success(['count'=>count($events),'events'=>count(array_keys($events)), 'd_tags'=>array_slice($dTags,0,30), 'created_at'=>array_slice($times,0,10), 'relay'=>\Woo2Nostr\Nostr\RelayPublisher::getRelays()[0] ?? '']);
     }
 
     private static function extractD(array $ev): string {
