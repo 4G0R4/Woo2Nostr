@@ -75,6 +75,12 @@ final class Utils {
     public static function normalizeRelay(string $url): string {
         $url = trim($url);
         $url = rtrim($url, '/');
+        if ($url === '') return '';
+        $hasPrefix = function_exists('str_starts_with') ? str_starts_with($url, 'wss://') : strpos($url, 'wss://') === 0;
+        $hasWs = function_exists('str_starts_with') ? str_starts_with($url, 'ws://') : strpos($url, 'ws://') === 0;
+        if (!$hasPrefix && !$hasWs && preg_match('/^[a-z0-9.-]+$/', $url)) {
+            $url = 'wss://' . $url;
+        }
         return $url;
     }
 

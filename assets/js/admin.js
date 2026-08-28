@@ -26,10 +26,38 @@ jQuery(function($){
     }).fail(function(){ $r.text('Request failed'); });
   });
   $('#woo2nostr-test-relay').on('click',function(){
-    var $r=$('#woo2nostr-test-result').text('Checking…');
-    $.post(woo2nostr.ajax,{action:'woo2nostr_test_relay',nonce:woo2nostr.nonce}).done(function(r){
-      $r.text(r.success? r.data.count+' relays configured' : 'Error');
-    }).fail(function(){ $r.text('Failed'); });
+    var $r=$('#woo2nostr-test-result');
+    var raw=$('#woo2nostr_relays').val()||'';
+    var urls=raw.split(/[\r\n,]+/).map(function(s){return s.trim().replace(/\/$/,'');}).filter(Boolean)
+      .map(function(s){ return (/^wss?:\/\//i.test(s))? s : ('wss://'+s); });
+    if(!urls.length){ $r.css('color','#d63638').text('No relays entered'); return; }
+    $r.text('Testing '+urls.length+' relays…');
+    var results=[];
+    var done=0;
+    urls.forEach(function(relay){
+      var ok=false, err='';
+      try{
+        var ws=new WebSocket(relay);
+        var t=setTimeout(function(){ try{ws.close();}catch(e){} finish(false,'timeout'); },7000);
+        var sub='test'+Date.now()+Math.floor(Math.random()*1000);
+        var finished=false;
+        function finish(good,reason){ if(finished)return; finished=true; clearTimeout(t); try{ws.close();}catch(e){} results.push({relay:relay,ok:good,error:reason}); tick(); }
+        ws.onopen=function(){ try{ ws.send(JSON.stringify(['REQ',sub,{'limit':1}])); }catch(e){ finish(false,'send'); } setTimeout(function(){ finish(true,undefined); },1500); };
+        ws.onmessage=function(m){ var j; try{j=JSON.parse(m.data);}catch(e){return;} if(j&&j[0]==='EOSE'&&j[1]===sub){ finish(true,undefined); } };
+        ws.onerror=function(){ finish(false,'connect failed'); };
+        ws.onclose=function(){ if(!finished) finish(true,undefined); };
+      }catch(e){ results.push({relay:relay,ok:false,error:'ws construct failed'}); tick(); }
+    });
+    function tick(){
+      done++;
+      if(done<urls.length) return;
+      var good=results.filter(function(r){return r.ok;}).length;
+      var html='<strong>'+good+'/'+urls.length+' relays reachable</strong><br>';
+      html+=results.map(function(r){
+        return (r.ok?'<span style="color:green">●</span>':'<span style="color:#d63638">✗</span>')+' '+r.relay+(r.error?(' <span style="color:#d63638;font-size:11px">'+r.error+'</span>'):'')+'<br>';
+      }).join('');
+      $r.css('color','').html(html);
+    }
   });
   $(document).on('click','#woo2nostr-verify',function(){
     var $b=$(this), $r=$('#woo2nostr-verify-result');

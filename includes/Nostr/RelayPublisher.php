@@ -14,8 +14,7 @@ final class RelayPublisher {
         $out = [];
         foreach ((array) $lines as $l) {
             $l = Utils::normalizeRelay(trim($l));
-            $hasPrefix = function_exists('str_starts_with') ? str_starts_with($l, 'wss://') : strpos($l, 'wss://') === 0;
-            if ($l && $hasPrefix) $out[] = $l;
+            if ($l) $out[] = $l;
         }
         if (get_option('woo2nostr_paid_relays', 0)) {
             foreach (self::PAID_RELAYS as $pr) if (!in_array($pr, $out, true)) $out[] = $pr;
