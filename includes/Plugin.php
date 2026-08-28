@@ -35,12 +35,23 @@ final class Plugin {
     }
 
     public function init(): void {
+        $this->migrateRelays();
         Admin\Settings::init();
         Admin\ProductMetaBox::init();
         Admin\BulkActions::init();
         Admin\OrderInbox::init();
         Sync\Queue::init();
         Orders\Inbox::init();
+    }
+
+    private function migrateRelays(): void {
+        if (get_option('woo2nostr_version') !== WOO2NOSTR_VERSION) {
+            $oldDefault = "wss://relay.damus.io\nwss://nos.lol\nwss://relay.nostr.band\nwss://relay.primal.net";
+            if (get_option('woo2nostr_relays', '') === $oldDefault) {
+                update_option('woo2nostr_relays', \Woo2Nostr\Nostr\RelayPublisher::DEFAULT_RELAYS);
+            }
+            update_option('woo2nostr_version', WOO2NOSTR_VERSION);
+        }
     }
 
     public function adminAssets(string $hook): void {

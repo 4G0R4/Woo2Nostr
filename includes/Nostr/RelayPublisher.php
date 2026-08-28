@@ -5,7 +5,7 @@ defined('ABSPATH') || exit;
 
 final class RelayPublisher {
 
-    const DEFAULT_RELAYS = "wss://relay.damus.io\nwss://nos.lol\nwss://relay.nostr.band\nwss://relay.primal.net";
+    const DEFAULT_RELAYS = "wss://relay.primal.net\nwss://nos.lol\nwss://relay.nostr.net\nwss://auth.nostr1.com\nwss://relay.damus.io";
     const PAID_RELAYS = ['wss://relay.nostr.wine', 'wss://eden.nostr.land'];
 
     public static function getRelays(): array {

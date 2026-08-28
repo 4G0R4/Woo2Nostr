@@ -3,7 +3,7 @@
  * Plugin Name: Woo2Nostr
  * Plugin URI: https://github.com/4G0R4/Woo2Nostr
  * Description: Mirror WooCommerce products to Nostr NIP-99 (kind 30402) at merchant discretion — selective or bulk, variations & bundles, optional Nostr order inbox.
- * Version: 0.1.0
+ * Version: 0.1.1
  * Author: 4G0R4
  * Author URI: https://github.com/4G0R4
  * License: GPLv3 or later
@@ -19,7 +19,7 @@
 
 defined('ABSPATH') || exit;
 
-define('WOO2NOSTR_VERSION', '0.1.0');
+define('WOO2NOSTR_VERSION', '0.1.1');
 define('WOO2NOSTR_FILE', __FILE__);
 define('WOO2NOSTR_DIR', plugin_dir_path(__FILE__));
 define('WOO2NOSTR_URL', plugin_dir_url(__FILE__));
