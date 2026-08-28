@@ -93,7 +93,16 @@ final class Settings {
             $hasGmp = extension_loaded('gmp');
             $hasSecp = extension_loaded('secp256k1');
             $hasBc = extension_loaded('bcmath');
-            if (!$hasGmp && !$hasSecp): ?><div class="notice notice-error inline"><p><?php esc_html_e('Missing PHP extension: need secp256k1 or gmp for server signing (bcmath alone not enough). Install php-gmp: sudo apt install php-gmp && restart php-fpm, or switch to NIP-07 browser extension mode for now. WP-Cron disabled also stalls background jobs — add system cron: * * * * * curl -s https://swag.btc.pub/wp-cron.php > /dev/null', 'woo2nostr'); ?> (bcmath=<?php echo $hasBc?'yes':'no'; ?>)</p></div><?php endif; ?>
+            $siteUrl = home_url();
+            if (!$hasGmp && !$hasSecp): ?><div class="notice notice-error inline"><p><strong><?php esc_html_e('Signing extensions missing — all server publishes will fail.', 'woo2nostr'); ?></strong><br>
+                <?php esc_html_e('Install php-gmp (pure PHP BIP-340 schnorr fallback):', 'woo2nostr'); ?><br>
+                <code>sudo apt install php-gmp && sudo systemctl restart php8.2-fpm</code> (Ubuntu/Debian)<br>
+                <code>dnf install php-gmp && systemctl restart php-fpm</code> (Fedora/RHEL)<br>
+                <?php esc_html_e('Or switch to NIP-07 browser extension mode.', 'woo2nostr'); ?></p></div><?php endif; ?>
+            <?php if (defined('DISABLE_WP_CRON') && DISABLE_WP_CRON): ?><div class="notice notice-warning inline"><p><strong><?php esc_html_e('WP-Cron disabled — background jobs may stall.', 'woo2nostr'); ?></strong><br>
+                <?php esc_html_e('Add a real cron to run every minute (required for Action Scheduler and order polling):', 'woo2nostr'); ?><br>
+                <code>* * * * * curl -s "<?php echo esc_url($siteUrl); ?>/wp-cron.php" > /dev/null 2>&1</code><br>
+                <a href="https://developer.wordpress.org/plugins/cron/#why-wp-cron-is-bad-for-performance" target="_blank"><?php esc_html_e('Learn more about WP-Cron limitations', 'woo2nostr'); ?></a></p></div><?php endif; ?>
             <?php if (!$hasNsec && $mode === 'server'): ?><div class="notice notice-warning inline"><p><?php esc_html_e('Server mode requires an nsec. Background sync & polling disabled until set.', 'woo2nostr'); ?></p></div><?php endif; ?>
             <?php if ($mode !== 'server'): ?><div class="notice notice-info inline"><p><?php esc_html_e('NIP-07 / Bunker modes require browser signing. Background auto-sync and polling are disabled in these modes.', 'woo2nostr'); ?></p></div><?php endif; ?>
             <form method="post">
@@ -191,8 +200,25 @@ final class Settings {
                 echo '<p>Last publish: '.esc_html(gmdate('Y-m-d H:i:s', (int)$last['time'])).' product #'.(int)$last['product_id'].' ok='.($last['ok']?'yes':'NO').'</p>';
                 echo '<pre style="max-height:200px;overflow:auto;background:#f6f8fa;padding:8px;font-size:11px">'.esc_html(wp_json_encode($last['results'], JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES)).'</pre>';
             } else { echo '<p>No publish yet — use bulk queue then check Woo &gt; Status &gt; Scheduled Actions for woo2nostr jobs.</p>'; }
+            global $wpdb;
+            $synced = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->postmeta} WHERE meta_key='_woo2nostr_status' AND meta_value='synced'");
+            $failed = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->postmeta} WHERE meta_key='_woo2nostr_status' AND meta_value='failed'");
+            $pending = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->postmeta} WHERE meta_key='_woo2nostr_status' AND meta_value='pending'");
+            $pendingNip = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->postmeta} WHERE meta_key='_woo2nostr_status' AND meta_value='pending_nip07'");
+            echo '<p><strong>Nostr products:</strong> synced='.(int)$synced.' failed='.(int)$failed.' pending='.(int)$pending.' pending_nip07='.(int)$pendingNip.'</p>';
+            if ((int)$failed > 0) {
+                $sample = $wpdb->get_col("SELECT post_id FROM {$wpdb->postmeta} WHERE meta_key='_woo2nostr_status' AND meta_value='failed' LIMIT 3");
+                echo '<p><strong>⚠ Recent errors (sample #'.implode(',', $sample).'):</strong></p>';
+                foreach ($sample as $sid) {
+                    $err = $wpdb->get_var($wpdb->prepare("SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id=%d AND meta_key='_woo2nostr_last_error' LIMIT 1", $sid));
+                    if ($err) echo '<pre style="max-height:120px;overflow:auto;background:#fef2f2;padding:6px;font-size:10px">#'.$sid.': '.esc_html(wp_json_encode(json_decode($err,true) ?: $err, JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES)).'</pre>';
+                }
+                if (!$hasGmp && !$hasSecp) echo '<p style="color:#d63638"><strong>Root cause:</strong> php-gmp not installed. Install it then re-run bulk publish.</p>';
+            }
             echo '<p>Listings (30402) appear on marketplace clients (Shopstr, Coracle) — not on nsite (nsite shows kind 30023). Verify at <a href="https://nostr.band/search?q=30402" target="_blank">nostr.band</a> or <a href="https://primal.net/search" target="_blank">Primal</a> with your npub.</p>';
-            echo '<p><a href="'.esc_url(admin_url('admin.php?page=wc-status&tab=action-scheduler&s=woo2nostr')).'" class="button">View Action Scheduler queue</a> <a href="'.esc_url(admin_url('admin.php?page=wc-status&tab=logs')).'" class="button">Logs</a></p>';
+            echo '<p><a href="'.esc_url(admin_url('admin.php?page=wc-status&tab=action-scheduler&s=woo2nostr')).'" class="button">View Action Scheduler queue</a> <a href="'.esc_url(admin_url('admin.php?page=wc-status&tab=logs')).'" class="button">Logs</a>';
+            if ((int)$failed > 0 && $hasGmp): echo ' <a href="'.esc_url(admin_url('admin.php?page=woo2nostr-bulk')).'" class="button button-primary">Retry failed (bulk)</a>'; endif;
+            echo '</p>';
             ?>
         </div>
         <?php
