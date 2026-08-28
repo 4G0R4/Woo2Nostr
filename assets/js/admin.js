@@ -31,30 +31,39 @@ jQuery(function($){
     var urls=raw.split(/[\r\n,]+/).map(function(s){return s.trim().replace(/\/$/,'');}).filter(Boolean)
       .map(function(s){ return (/^wss?:\/\//i.test(s))? s : ('wss://'+s); });
     if(!urls.length){ $r.css('color','#d63638').text('No relays entered'); return; }
-    $r.text('Testing '+urls.length+' relays…');
+    $r.text('Probing '+urls.length+' relays for kind 30402/30403 (NIP-99) read support…');
     var results=[];
     var done=0;
     urls.forEach(function(relay){
-      var ok=false, err='';
+      var ok=false, err='', note='';
       try{
         var ws=new WebSocket(relay);
-        var t=setTimeout(function(){ try{ws.close();}catch(e){} finish(false,'timeout'); },7000);
+        var t=setTimeout(function(){ try{ws.close();}catch(e){} finish(false,'timeout'); },8000);
         var sub='test'+Date.now()+Math.floor(Math.random()*1000);
-        var finished=false;
-        function finish(good,reason){ if(finished)return; finished=true; clearTimeout(t); try{ws.close();}catch(e){} results.push({relay:relay,ok:good,error:reason}); tick(); }
-        ws.onopen=function(){ try{ ws.send(JSON.stringify(['REQ',sub,{'limit':1}])); }catch(e){ finish(false,'send'); } setTimeout(function(){ finish(true,undefined); },1500); };
-        ws.onmessage=function(m){ var j; try{j=JSON.parse(m.data);}catch(e){return;} if(j&&j[0]==='EOSE'&&j[1]===sub){ finish(true,undefined); } };
+        var finished=false, gotEOSE=false;
+        function finish(good,reason){ if(finished)return; finished=true; clearTimeout(t); try{ws.close();}catch(e){} results.push({relay:relay,ok:good,error:reason,note:note}); tick(); }
+        ws.onopen=function(){ try{ ws.send(JSON.stringify(['REQ',sub,{'kinds':[30402,30403],'limit':1}])); }catch(e){ finish(false,'send'); } };
+        ws.onmessage=function(m){
+          var j; try{j=JSON.parse(m.data);}catch(e){return;}
+          if(!j||!j[0]) return;
+          if(j[0]==='EOSE'&&j[1]===sub){ gotEOSE=true; setTimeout(function(){ finish(true,undefined); },200); }
+          else if(j[0]==='EVENT'&&j[1]===sub){ gotEOSE=true; note='has 30402/30403 events'; setTimeout(function(){ finish(true,undefined); },200); }
+          else if(j[0]==='CLOSED'&&j[1]===sub){ finish(false,'CLOSED: '+(j[2]||'')); }
+          else if(j[0]==='NOTICE'||j[0]==='OK'){ note=(j[2]||j[1]||'').toString().slice(0,80)||note; }
+          else if(j[0]==='AUTH'){ note='requires NIP-42 auth'; }
+        };
         ws.onerror=function(){ finish(false,'connect failed'); };
-        ws.onclose=function(){ if(!finished) finish(true,undefined); };
+        ws.onclose=function(){ if(!finished){ finish(true, undefined); } };
       }catch(e){ results.push({relay:relay,ok:false,error:'ws construct failed'}); tick(); }
     });
     function tick(){
       done++;
       if(done<urls.length) return;
       var good=results.filter(function(r){return r.ok;}).length;
-      var html='<strong>'+good+'/'+urls.length+' relays reachable</strong><br>';
+      var html='<strong>'+good+'/'+urls.length+' relays answering kind 30402/30403 REQ</strong><br>';
+      html+='<span style="font-size:11px">Note: read-probe only — any NIP-01 relay stores all kinds (incl. NIP-99). Confirm writes via Publish (per-relay OK acks) and Verify. NIP-42 auth relays reject writes without login.</span><br>';
       html+=results.map(function(r){
-        return (r.ok?'<span style="color:green">●</span>':'<span style="color:#d63638">✗</span>')+' '+r.relay+(r.error?(' <span style="color:#d63638;font-size:11px">'+r.error+'</span>'):'')+'<br>';
+        return (r.ok?'<span style="color:green">●</span>':'<span style="color:#d63638">✗</span>')+' '+r.relay+(r.error?(' <span style="color:#d63638;font-size:11px">'+r.error+'</span>'):'')+(r.note?(' <span style="font-size:11px">'+r.note+'</span>'):'')+'<br>';
       }).join('');
       $r.css('color','').html(html);
     }
