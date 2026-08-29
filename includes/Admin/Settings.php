@@ -18,6 +18,7 @@ final class Settings {
         add_action('wp_ajax_woo2nostr_test_relay', [self::class, 'ajaxTestRelay']);
         add_action('wp_ajax_woo2nostr_nip07_publish', [self::class, 'ajaxNip07Publish']);
         add_action('wp_ajax_woo2nostr_nip07_connect', [self::class, 'ajaxNip07Connect']);
+        add_action('wp_ajax_woo2nostr_set_ds', [self::class, 'ajaxSetDs']);
     }
 
     public static function menu(): void {
@@ -317,6 +318,16 @@ final class Settings {
         $res = \Woo2Nostr\Nostr\RelayPublisher::publish($signed);
         if (!empty($res['ok']) && $pid) self::recordMeta($pid, $signed);
         wp_send_json_success($res);
+    }
+
+    public static function ajaxSetDs(): void {
+        check_ajax_referer('woo2nostr','nonce');
+        if (!current_user_can('manage_woocommerce')) wp_send_json_error('forbidden');
+        $pid = (int) ($_POST['product_id'] ?? 0);
+        if (!$pid) wp_send_json_error('no product id');
+        $ds = array_filter(array_map('sanitize_text_field', (array) ($_POST['ds'] ?? [])));
+        \Woo2Nostr\Sync\Queue::setPublishedDs($pid, $ds);
+        wp_send_json_success(['count'=>count($ds)]);
     }
 
     public static function ajaxVerify(): void {

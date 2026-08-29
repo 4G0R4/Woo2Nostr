@@ -5,7 +5,7 @@ Requires at least: 6.0
 Tested up to: 6.8
 Requires PHP: 8.0
 Requires Plugins: woocommerce
-Stable tag: 0.1.4
+Stable tag: 0.1.5
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -50,6 +50,10 @@ Yes, merchant chooses server nsec, NIP-07, or NIP-46.
 Default `wss://relay.primal.net, wss://nos.lol, wss://relay.nostr.band, wss://relay.nostr.net, wss://auth.nostr1.com, wss://relay.damus.io` (free, good NIP-99 retention). Paid opt-in: `wss://relay.nostr.wine` + `wss://eden.nostr.land` (requires NIP-42 auth, ~18k sats / ~4M msats/mo, indefinite retention, NIP-99 supported). Coracle has no dedicated relay — it’s a client that uses your relays (its `bucket.coracle.social` is ephemeral cache, not for NIP-99). All editable.
 
 == Changelog ==
+
+= 0.1.5 =
+* Products list filter: published / unpublished / failed / pending / excluded.
+* Card retirement: the plugin now tracks the set of published cards (d-tags) per product. When you change publish mode (or a variation disappears) and re-publish, previously published cards that are no longer in the set are pushed as kind 30403 (draft), so they stop showing in marketplaces. Works in both server and NIP-07 mode.
 
 = 0.1.4 =
 * Products list "Nostr" column now shows variation coverage for variable products (e.g. green "● 3/5 vars"). Publish meta is recorded per variation (d-tag routed).

@@ -97,6 +97,28 @@ final class Queue {
         delete_post_meta($id, '_woo2nostr_last_error');
     }
 
+    public static function publishedDs(int $productId): array {
+        $v = get_post_meta($productId, '_woo2nostr_published_ds', true);
+        return is_array($v) ? array_values(array_map('strval', $v)) : [];
+    }
+
+    public static function setPublishedDs(int $productId, array $dTags): void {
+        update_post_meta($productId, '_woo2nostr_published_ds', array_values(array_unique(array_filter(array_map('strval', $dTags)))));
+    }
+
+    public static function retireCards(int $productId, array $oldDs, array $newDs, $signer): int {
+        $stale = array_values(array_diff($oldDs, $newDs));
+        $ok = 0;
+        foreach ($stale as $d) {
+            $ev = ['kind' => 30403, 'created_at' => time(), 'tags' => [['d', $d], ['visibility', 'hidden']], 'content' => ''];
+            $signed = $signer->sign($ev);
+            if (!$signed) continue;
+            $r = RelayPublisher::publish($signed);
+            if (!empty($r['ok'])) $ok++;
+        }
+        return $ok;
+    }
+
     public static function syncProduct(int $productId): array {
         $product = wc_get_product($productId);
         if (!$product) return ['ok' => false, 'error' => 'Product not found'];
@@ -120,6 +142,7 @@ final class Queue {
         ]);
         $results = [];
         $lastError = '';
+        $newDs = [];
         foreach ($events as $ev) {
             $signed = $signer->sign($ev);
             if (!$signed) {
@@ -133,13 +156,19 @@ final class Queue {
             if (!empty($pub['ok'])) {
                 $d = '';
                 foreach ($signed['tags'] as $t) if (($t[0] ?? '') === 'd') { $d = $t[1] ?? ''; break; }
+                if ($d) $newDs[] = $d;
                 self::recordSynced($productId, $d, $signed);
             } else {
                 $lastError = wp_json_encode($pub);
             }
         }
         $ok = count(array_filter($results, fn($r) => !empty($r['ok']))) > 0;
-        if (!$ok) {
+        $allOk = !empty($results) && count($results) === count(array_filter($results, fn($r) => !empty($r['ok'])));
+        if ($ok && $allOk) {
+            $retired = self::retireCards($productId, self::publishedDs($productId), $newDs, $signer);
+            self::setPublishedDs($productId, $newDs);
+            if ($retired > 0) error_log('[Woo2Nostr] retired '.$retired.' stale cards for product '.$productId);
+        } else {
             update_post_meta($productId, '_woo2nostr_status', 'failed');
             update_post_meta($productId, '_woo2nostr_last_error', $lastError ?: wp_json_encode($results));
             error_log('[Woo2Nostr] sync failed product '.$productId.': '.wp_json_encode($results));

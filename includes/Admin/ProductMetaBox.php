@@ -15,6 +15,8 @@ final class ProductMetaBox {
         add_action('wp_ajax_woo2nostr_preview', [self::class, 'ajaxPreview']);
         add_filter('manage_edit-product_columns', [self::class, 'columnHeader']);
         add_action('manage_product_posts_custom_column', [self::class, 'columnContent'], 10, 2);
+        add_action('restrict_manage_posts', [self::class, 'statusFilter']);
+        add_action('pre_get_posts', [self::class, 'filterProducts']);
     }
 
     public static function boxes(): void {
@@ -99,7 +101,7 @@ final class ProductMetaBox {
             $p = wc_get_product($id);
             if (!$p) wp_send_json_error('not found');
             $events = EventBuilder::buildForProduct($p, ['shopstr'=>(bool)get_option('woo2nostr_shopstr',1)]);
-            wp_send_json_success(['need_sign'=>true,'events'=>$events,'mode'=>$mode]);
+            wp_send_json_success(['need_sign'=>true,'events'=>$events,'mode'=>$mode,'previous_ds'=>Queue::publishedDs($id)]);
         }
         $res = Queue::syncProduct($id);
         $res['ok'] ? wp_send_json_success($res) : wp_send_json_error($res);
@@ -155,5 +157,32 @@ final class ProductMetaBox {
         elseif ($s === 'no_key') echo '<span title="'.esc_attr($err).'" style="color:#d63638">● no_key</span>';
         elseif ($s) echo '<span title="'.esc_attr($err).'" style="color:#d63638">● '.esc_html($s).'</span>';
         else echo '<span style="color:#999">—</span>';
+    }
+
+    public static function statusFilter(string $postType): void {
+        if ($postType !== 'product') return;
+        $selected = sanitize_key($_GET['woo2nostr_status'] ?? '');
+        echo '<select name="woo2nostr_status">';
+        echo '<option value="">'.esc_html__('All Nostr statuses','woo2nostr').'</option>';
+        echo '<option value="published" '.selected($selected,'published',false).'>● Published</option>';
+        echo '<option value="unpublished" '.selected($selected,'unpublished',false).'>— Unpublished</option>';
+        echo '<option value="failed" '.selected($selected,'failed',false).'>● failed</option>';
+        echo '<option value="pending" '.selected($selected,'pending',false).'>● pending_nip07</option>';
+        echo '<option value="excluded" '.selected($selected,'excluded',false).'>● excluded</option>';
+        echo '</select>';
+    }
+
+    public static function filterProducts(\WP_Query $q): void {
+        if (!is_admin() || $q->get('post_type') !== 'product') return;
+        $v = sanitize_key($_GET['woo2nostr_status'] ?? '');
+        if ($v === '') return;
+        $mq = $q->get('meta_query') ?: [];
+        if ($v === 'published') $mq[] = ['key' => '_woo2nostr_last_event_id', 'compare' => 'EXISTS'];
+        elseif ($v === 'unpublished') $mq[] = ['key' => '_woo2nostr_last_event_id', 'compare' => 'NOT EXISTS'];
+        elseif ($v === 'failed') $mq[] = ['key' => '_woo2nostr_status', 'value' => 'failed'];
+        elseif ($v === 'pending') $mq[] = ['key' => '_woo2nostr_status', 'value' => 'pending_nip07'];
+        elseif ($v === 'excluded') $mq[] = ['key' => '_woo2nostr_excluded', 'value' => 'yes'];
+        else return;
+        $q->set('meta_query', $mq);
     }
 }

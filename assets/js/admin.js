@@ -163,7 +163,7 @@ jQuery(function($){
     if(!hasNostr()) throw new Error(woo2nostr.i18n.noExtension);
     var r = await $.post(woo2nostr.ajax,{action:'woo2nostr_publish_single',nonce:woo2nostr.nonce,product_id:pid});
     if(!(r.success && r.data && r.data.need_sign)) throw new Error(typeof r.data==='string'? r.data : JSON.stringify(r.data));
-    var total={ok:0,fail:0}, detail=[];
+    var total={ok:0,fail:0}, detail=[], publishedDs=[];
     for(var i=0;i<r.data.events.length;i++){
       var ev=r.data.events[i];
       var signed = await nip07Sign(ev);
@@ -172,6 +172,8 @@ jQuery(function($){
       detail.push(ok+'/'+results.length+' relays OK');
       if(ok>0){
         total.ok++;
+        var d=dOf(ev);
+        if(d) publishedDs.push(d);
         try{ await recordNip07Publish(pid, signed); }catch(e){ detail.push('meta:'+e.message); }
       } else {
         total.fail++;
@@ -179,7 +181,27 @@ jQuery(function($){
         throw new Error('No relay accepted event '+i+' ['+bad+']');
       }
     }
+    var retired=0;
+    try{
+      var stale=(r.data.previous_ds||[]).filter(function(oldD){ return publishedDs.indexOf(oldD)===-1; });
+      for(var s=0;s<stale.length;s++){
+        var sev={kind:30403,created_at:Math.floor(Date.now()/1000),tags:[['d',stale[s]],['visibility','hidden']],content:''};
+        var ssigned=await nip07Sign(sev);
+        var sres=await publishDirect(ssigned);
+        if(countOk(sres)>0) retired++;
+      }
+      if(publishedDs.length){
+        await $.post(woo2nostr.ajax,{action:'woo2nostr_set_ds',nonce:woo2nostr.nonce,product_id:pid,ds:publishedDs});
+      }
+    }catch(e){ detail.push('cleanup:'+(e.message||e)); }
+    if(retired>0) detail.push(retired+' stale card(s) retired');
     return {pid:pid, total:total, detail:detail};
+  }
+
+  function dOf(ev){
+    var t=(ev&&ev.tags)||[];
+    for(var i=0;i<t.length;i++) if(t[i]&&t[i][0]==='d') return t[i][1];
+    return '';
   }
 
   $(document).on('click','#woo2nostr-publish',async function(){
