@@ -87,6 +87,16 @@ final class Queue {
         foreach ((array) $ids as $id) self::syncProduct((int) $id);
     }
 
+    private static function recordSynced(int $defaultId, string $d, array $signed): void {
+        $id = $defaultId;
+        if (preg_match('/^wc-\d+-var-(\d+)$/', $d, $m)) $id = (int) $m[1];
+        update_post_meta($id, '_woo2nostr_last_event_id', $signed['id']);
+        update_post_meta($id, '_woo2nostr_last_d', $d);
+        update_post_meta($id, '_woo2nostr_last_sync', time());
+        update_post_meta($id, '_woo2nostr_status', 'synced');
+        delete_post_meta($id, '_woo2nostr_last_error');
+    }
+
     public static function syncProduct(int $productId): array {
         $product = wc_get_product($productId);
         if (!$product) return ['ok' => false, 'error' => 'Product not found'];
@@ -123,11 +133,7 @@ final class Queue {
             if (!empty($pub['ok'])) {
                 $d = '';
                 foreach ($signed['tags'] as $t) if (($t[0] ?? '') === 'd') { $d = $t[1] ?? ''; break; }
-                update_post_meta($productId, '_woo2nostr_last_event_id', $signed['id']);
-                update_post_meta($productId, '_woo2nostr_last_d', $d);
-                update_post_meta($productId, '_woo2nostr_last_sync', time());
-                update_post_meta($productId, '_woo2nostr_status', 'synced');
-                delete_post_meta($productId, '_woo2nostr_last_error');
+                self::recordSynced($productId, $d, $signed);
             } else {
                 $lastError = wp_json_encode($pub);
             }

@@ -111,6 +111,10 @@ jQuery(function($){
     }
   }
 
+  $(document).on('change','#woo2nostr-publish-mode',function(){
+    $('#woo2nostr-group-attr-wrap').toggle($(this).val()==='per_attribute');
+  });
+
   $(document).on('click','#woo2nostr-connect-nip07',function(){ connectNip07($(this),'#woo2nostr-connect-result','#woo2nostr-nip07-pubkey'); });
   $(document).on('click','#woo2nostr-connect-nip07-mb',function(){ connectNip07($(this),'#woo2nostr-connect-mb-result',null); });
 

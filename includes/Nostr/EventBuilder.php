@@ -11,9 +11,23 @@ final class EventBuilder {
         $pubkey = $opts['pubkey'] ?? '';
 
         if ($product->is_type('variable')) {
+            $mode = $opts['publish_mode'] ?? (get_post_meta($product->get_id(), '_woo2nostr_publish_mode', true) ?: 'all_variations');
+            $mode = in_array($mode, ['all_variations', 'per_attribute', 'one_per_product'], true) ? $mode : 'all_variations';
+            $attrKey = (string) ($opts['group_attribute'] ?? (get_post_meta($product->get_id(), '_woo2nostr_group_attribute', true) ?: ''));
+            if ($mode === 'per_attribute' && $attrKey === '') $mode = 'all_variations';
+            $children = (array) $product->get_children();
+
+            if ($mode === 'one_per_product') {
+                $min = $product->get_variation_price('min');
+                return [self::buildSimple($product, $currency, $shopstr, true, $min ? (string) $min : null)];
+            }
+            if ($mode === 'per_attribute') {
+                return self::buildGroupedByAttribute($product, $children, $attrKey, $currency, $shopstr);
+            }
+
             $events = [];
             $events[] = self::buildSimple($product, $currency, $shopstr, true);
-            foreach ($product->get_children() as $vid) {
+            foreach ($children as $vid) {
                 $var = wc_get_product($vid);
                 if (!$var) continue;
                 $events[] = self::buildVariation($var, $product, $currency, $shopstr);
@@ -30,7 +44,7 @@ final class EventBuilder {
         return [self::buildSimple($product, $currency, $shopstr, false)];
     }
 
-    private static function buildSimple(\WC_Product $p, string $currency, bool $shopstr, bool $isVariableParent): array {
+    private static function buildSimple(\WC_Product $p, string $currency, bool $shopstr, bool $isVariableParent, ?string $minPrice = null): array {
         $id = $p->get_id();
         $d = Utils::dTagForProduct($id);
         $title = $p->get_name();
@@ -60,8 +74,8 @@ final class EventBuilder {
             ['status', $status],
         ];
         if ($summary) $tags[] = ['summary', $summary];
-        if ($price !== '' && $price !== null && !$isVariableParent) {
-            $tags[] = ['price', (string) $price, $currency];
+        if ($price !== '' && $price !== null && (!$isVariableParent || $minPrice !== null)) {
+            $tags[] = ['price', (string) ($minPrice ?? $price), $currency];
         }
         if ($stockQty !== null) $tags[] = ['stock', $stockQty];
         if ($weight) $tags[] = ['weight', (string) $weight, 'kg'];
@@ -122,6 +136,39 @@ final class EventBuilder {
         $location = get_option('woo2nostr_location', '');
         if ($location) $tags[] = ['location', $location];
         return self::wrapEvent($tags, $content, self::kindForProduct($var));
+    }
+
+    private static function buildGroupedByAttribute(\WC_Product $product, array $children, string $attrKey, string $currency, bool $shopstr): array {
+        $groups = [];
+        foreach ($children as $vid) {
+            $var = wc_get_product($vid);
+            if (!$var) continue;
+            if ($var->get_status() !== 'publish') continue;
+            $attrs = $var->get_attributes();
+            $val = trim((string) ($attrs[$attrKey] ?? $var->get_attribute($attrKey)));
+            if ($val === '') $val = '—';
+            $key = sanitize_title($val);
+            if ($key === '') $key = 'var-' . $vid;
+            $price = (float) $var->get_price();
+            $inStock = $var->is_in_stock();
+            $cur = $groups[$key] ?? null;
+            if ($cur === null) {
+                $groups[$key] = ['value' => $val, 'variation' => $var, 'price' => $price, 'inStock' => $inStock];
+            } elseif ($inStock && !$cur['inStock']) {
+                $groups[$key] = ['value' => $val, 'variation' => $var, 'price' => $price, 'inStock' => true];
+            } elseif ($inStock === $cur['inStock'] && $price < $cur['price']) {
+                $groups[$key] = ['value' => $val, 'variation' => $var, 'price' => $price, 'inStock' => $inStock];
+            }
+        }
+        $events = [];
+        foreach ($groups as $key => $g) {
+            $ev = self::buildVariation($g['variation'], $product, $currency, $shopstr);
+            $ev['tags'] = array_values(array_filter($ev['tags'], fn($t) => ($t[0] ?? '') !== 'd'));
+            $d = 'wc-' . $product->get_id() . '-' . sanitize_title($attrKey) . '-' . $key;
+            $ev['tags'][] = ['d', $d];
+            $events[] = $ev;
+        }
+        return $events;
     }
 
     private static function wrapEvent(array $tags, string $content, int $kind = 30402): array {

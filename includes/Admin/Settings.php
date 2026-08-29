@@ -286,6 +286,20 @@ final class Settings {
         wp_send_json_success(['relays'=>$relays,'count'=>count($relays)]);
     }
 
+    private static function targetId(int $defaultId, array $signed): int {
+        $d = self::extractD($signed);
+        if ($d && preg_match('/^wc-\d+-var-(\d+)$/', $d, $m)) return (int) $m[1];
+        return $defaultId;
+    }
+
+    private static function recordMeta(int $pid, array $signed): void {
+        update_post_meta($pid, '_woo2nostr_last_event_id', $signed['id']);
+        update_post_meta($pid, '_woo2nostr_status', 'synced');
+        update_post_meta($pid, '_woo2nostr_last_sync', time());
+        update_post_meta($pid, '_woo2nostr_last_d', self::extractD($signed));
+        delete_post_meta($pid, '_woo2nostr_last_error');
+    }
+
     public static function ajaxNip07Publish(): void {
         check_ajax_referer('woo2nostr','nonce');
         if (!current_user_can('manage_woocommerce')) wp_send_json_error('forbidden');
@@ -294,17 +308,14 @@ final class Settings {
         if (!preg_match('/^[0-9a-f]{64}$/i', $signed['pubkey'])) wp_send_json_error('Invalid pubkey');
         update_option('woo2nostr_pubkey', strtolower($signed['pubkey']));
         $record = !empty($_POST['record']) ? (bool) $_POST['record'] : false;
+        $pid = self::targetId((int) ($_POST['product_id'] ?? 0), $signed);
         if ($record) {
-            $pid = (int) ($_POST['product_id'] ?? 0);
-            if ($pid) { update_post_meta($pid,'_woo2nostr_last_event_id',$signed['id']); update_post_meta($pid,'_woo2nostr_status','synced'); update_post_meta($pid,'_woo2nostr_last_sync',time()); update_post_meta($pid,'_woo2nostr_last_d', self::extractD($signed)); delete_post_meta($pid,'_woo2nostr_last_error'); }
+            if ($pid) self::recordMeta($pid, $signed);
             if (get_option('woo2nostr_shopstr', 1)) \Woo2Nostr\Nostr\RelayPublisher::postCache($signed);
             wp_send_json_success(['recorded'=>true,'pubkey'=>strtolower($signed['pubkey'])]);
         }
         $res = \Woo2Nostr\Nostr\RelayPublisher::publish($signed);
-        if (!empty($res['ok'])) {
-            $pid = (int) ($_POST['product_id'] ?? 0);
-            if ($pid) { update_post_meta($pid,'_woo2nostr_last_event_id',$signed['id']); update_post_meta($pid,'_woo2nostr_status','synced'); update_post_meta($pid,'_woo2nostr_last_sync',time()); update_post_meta($pid,'_woo2nostr_last_d', self::extractD($signed)); }
-        }
+        if (!empty($res['ok']) && $pid) self::recordMeta($pid, $signed);
         wp_send_json_success($res);
     }
 
